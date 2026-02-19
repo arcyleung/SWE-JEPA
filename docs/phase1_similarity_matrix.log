@@ -1,0 +1,84 @@
+============================================================
+MODEL: /home/original_models/Qwen2.5-Coder-3B
+Layer: 18
+============================================================
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|█████████████████████████████████████| 434/434 [00:01<00:00, 394.88it/s, Materializing param=model.norm.weight]
+Hidden size: 2048, Total layers: 36
+Functions found: 5 -> ['__init__', 'get', 'put', '_is_expired', '_hash_key']
+
+Pairwise cosine similarity @ layer 18
+------------------------------------------------------------------------------------
+                    __init__           get           put   _is_expired     _hash_key
+__init__              1.0000        0.8633        0.8677        0.7363        0.6553
+get                   0.8633        0.9995        0.9536        0.8125        0.6992
+put                   0.8677        0.9536        1.0000        0.8604        0.7212
+_is_expired           0.7363        0.8125        0.8604        0.9995        0.7295
+_hash_key             0.6553        0.6992        0.7212        0.7295        1.0010
+
+Off-diagonal  min=0.6553  max=0.9536  mean=0.7899
+
+============================================================
+MODEL: /home/original_models/Qwen2.5-Coder-3B-Instruct
+Layer: 18
+============================================================
+Loading weights: 100%|█████████████████████████████████████| 434/434 [00:01<00:00, 384.88it/s, Materializing param=model.norm.weight]
+Hidden size: 2048, Total layers: 36
+Functions found: 5 -> ['__init__', 'get', 'put', '_is_expired', '_hash_key']
+
+Pairwise cosine similarity @ layer 18
+------------------------------------------------------------------------------------
+                    __init__           get           put   _is_expired     _hash_key
+__init__              0.9995        0.8628        0.8633        0.7344        0.6499
+get                   0.8628        1.0000        0.9521        0.8130        0.6982
+put                   0.8633        0.9521        0.9995        0.8564        0.7163
+_is_expired           0.7344        0.8130        0.8564        1.0000        0.7231
+_hash_key             0.6499        0.6982        0.7163        0.7231        0.9995
+
+Off-diagonal  min=0.6499  max=0.9521  mean=0.7870
+
+============================================================
+MODEL: /home/original_models/Qwen3-8B
+Layer: 18
+============================================================
+Loading weights: 100%|█████████████████████████████████████| 399/399 [00:02<00:00, 149.07it/s, Materializing param=model.norm.weight]
+Hidden size: 4096, Total layers: 36
+Functions found: 5 -> ['__init__', 'get', 'put', '_is_expired', '_hash_key']
+
+Pairwise cosine similarity @ layer 18
+------------------------------------------------------------------------------------
+                    __init__           get           put   _is_expired     _hash_key
+__init__              0.9995        0.8765        0.8896        0.7900        0.7275
+get                   0.8765        1.0000        0.9512        0.8423        0.7700
+put                   0.8896        0.9512        1.0000        0.8843        0.7920
+_is_expired           0.7900        0.8423        0.8843        1.0000        0.7773
+_hash_key             0.7275        0.7700        0.7920        0.7773        0.9990
+
+Off-diagonal  min=0.7275  max=0.9512  mean=0.8301
+
+============================================================
+MODEL: /home/original_models/Qwen3-8B-base
+Layer: 18
+============================================================
+Loading weights: 100%|██████████████████████████████████████| 399/399 [00:10<00:00, 36.57it/s, Materializing param=model.norm.weight]
+Hidden size: 4096, Total layers: 36
+Functions found: 5 -> ['__init__', 'get', 'put', '_is_expired', '_hash_key']
+
+Pairwise cosine similarity @ layer 18
+------------------------------------------------------------------------------------
+                    __init__           get           put   _is_expired     _hash_key
+__init__              1.0000        0.8730        0.8853        0.7852        0.7163
+get                   0.8730        1.0010        0.9526        0.8384        0.7637
+put                   0.8853        0.9526        1.0000        0.8896        0.7915
+_is_expired           0.7852        0.8384        0.8896        0.9995        0.7773
+_hash_key             0.7163        0.7637        0.7915        0.7773        0.9990
+
+Off-diagonal  min=0.7163  max=0.9526  mean=0.8273
+
+============================================================
+SUMMARY: mean off-diagonal cosine sim @ layer 18
+============================================================
+  Qwen2.5-Coder-3B                   : mean_inter_func_sim = 0.7899
+  Qwen2.5-Coder-3B-Instruct          : mean_inter_func_sim = 0.7870
+  Qwen3-8B                           : mean_inter_func_sim = 0.8301
+  Qwen3-8B-base                      : mean_inter_func_sim = 0.8273
