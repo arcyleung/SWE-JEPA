@@ -32,9 +32,14 @@ TEACHER_MODELS = [
 def load_teacher(
     model_name: str = TEACHER_MODELS[0],  # or 3B, 7B -- start small
     device: str = "cuda:1",
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype | str = "auto",
 ):
-    """Load the frozen teacher model."""
+    """Load the frozen teacher model.
+
+    dtype defaults to "auto" so that each model loads with the dtype specified
+    in its own config.json (bfloat16 for Qwen3, float16 for Qwen2.5-Coder).
+    Forcing float16 on Qwen3-8B causes activation overflow → NaN hidden states.
+    """
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -47,6 +52,19 @@ def load_teacher(
     # Freeze everything -- this IS the frozen teacher
     for param in model.parameters():
         param.requires_grad = False
+
+    # Belt-and-suspenders: normalize all parameters to the dominant dtype.
+    # Qwen2 ties lm_head.weight to embed_tokens.weight, but under dtype="auto"
+    # the tying can be deferred in multi-threaded loads, leaving lm_head in
+    # float32 while the rest of the model is bfloat16.  We route the forward
+    # pass through model.model (skipping lm_head entirely), but cast here too
+    # so any other stray float32 tensors don't surface later.
+    dominant = max(
+        (p.dtype for p in model.parameters()),
+        key=lambda d: {torch.bfloat16: 2, torch.float16: 1}.get(d, 0),
+    )
+    if any(p.dtype != dominant for p in model.parameters()):
+        model = model.to(dominant)
 
     return model, tokenizer
 
@@ -113,17 +131,23 @@ def extract_hidden_states(
 
     input_ids = encoding["input_ids"].to(model.device)
     offset_mapping = encoding["offset_mapping"][0]  # (seq_len, 2)
-    # Forward pass requesting all hidden states
-    outputs = model(
+
+    # Use the base transformer (model.model) rather than the full causal LM so
+    # that the lm_head is never executed.  This avoids the float32/bfloat16
+    # dtype mismatch that occurs when lm_head.weight is newly initialised (Qwen2
+    # ties it to embed_tokens but the tying can be deferred under dtype="auto"
+    # in multi-threaded loads).  It also skips logit computation we don't need.
+    _base = getattr(model, 'model', model)
+    outputs = _base(
         input_ids=input_ids,
-        output_hidden_states=True,  # <-- this is the key flag
+        output_hidden_states=True,
     )
 
     # outputs.hidden_states is a tuple of (num_layers + 1) tensors
     # Index 0 = embedding layer output
     # Index 1 = after transformer layer 1
     # ...
-    # Index -1 = after final layer (same as outputs.last_hidden_state)
+    # Index -1 = after final layer (same as last_hidden_state)
     # Each tensor shape: (batch=1, seq_len, hidden_dim)
     all_hidden_states = outputs.hidden_states
     selected_layer = all_hidden_states[layer].squeeze(0)  # (seq_len, hidden_dim)

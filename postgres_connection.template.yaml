@@ -1,0 +1,5 @@
+ip: 10.10.10.10
+port: 9999
+user: user
+password: pass
+database: db
