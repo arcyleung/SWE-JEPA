@@ -1,5 +1,5 @@
 """
-Code-JEPA Teacher: Extract hidden states from Qwen-2.5-Coder at masked code regions.
+SWE-JEPA Teacher: Extract hidden states from Qwen-2.5-Coder at masked code regions.
 
 This is the "Level 0" prototype -- using a frozen pretrained model as the teacher
 without any fine-tuning. We extract dense hidden states at structurally-masked

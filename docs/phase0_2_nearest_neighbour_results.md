@@ -89,3 +89,7 @@ For SWE-JEPA, the 3B base model is the better teacher for structural masking tar
 - **Experiment 0.3**: Linear probing for static structural properties (cyclomatic complexity, LOC, side effects, return type, branch/loop count, API call count) → validates that the embedding space encodes what the student will need to predict
 - Run LLM judge on the `handle_flow_dict` family triplet to quantify the score_a / score_b disconnect
 - Deduplicate exact copies before downstream training (keep one representative per function identity)
+
+## References
+https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/kim-tse-2014.pdf
+https://www.melconway.com/Home/pdf/committees.pdf

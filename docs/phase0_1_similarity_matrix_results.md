@@ -1,9 +1,9 @@
-Based on the full matrix results, including min/max of similarities this time: Should I select the model with higher or lower variance/ dynamic range? And how could that choice impact the downstream decoder's performance of this Code-JEPA idea?
+Based on the full matrix results, including min/max of similarities this time: Should I select the model with higher or lower variance/ dynamic range? And how could that choice impact the downstream decoder's performance of this SWE-JEPA idea?
 
 ● Choose higher variance (wider dynamic range) — the Coder-3B Base.
   Here's the reasoning:
   ---
-  Why dynamic range matters for Code-JEPA targets
+  Why dynamic range matters for SWE-JEPA targets
   The teacher's role is to provide target representations the student must predict. The decoder takes a context encoding + masked region position and regresses toward the teacher's embedding. So the quality of the teacher signal determines what the student is forced to learn.
 
   The collapse risk with low variance (Qwen3-8B)
