@@ -107,7 +107,7 @@ def embed_file(path: str, model_path: str, layer: int) -> list[tuple[np.ndarray,
     """
     import torch
     from hidden_state_extractor import load_teacher, extract_hidden_states
-    from phase1_similarity_matrix import find_functions_with_names
+    from phase0_1_similarity_matrix import find_functions_with_names
 
     source = open(path).read()
     pairs  = find_functions_with_names(source)

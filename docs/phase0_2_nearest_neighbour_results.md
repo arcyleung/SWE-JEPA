@@ -93,3 +93,71 @@ For SWE-JEPA, the 3B base model is the better teacher for structural masking tar
 ## References
 https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/kim-tse-2014.pdf
 https://www.melconway.com/Home/pdf/committees.pdf
+
+---
+
+## Full-Scale Evaluation (Feb 22 2026)
+
+**Scale**: 4 models × 28,400 functions × k=10 = **1,136,000 pairs**
+**LLM judge**: Qwen3-Coder-30B
+**Output**: `docs/phase0_2_knn_results_full.jsonl` (1.1 GB)
+
+### Pipeline Summary
+
+| Step | Result |
+|------|--------|
+| KNN retrieval | 1,136,000 pairs (4 models) |
+| Cross-repo pairs | 31,068 (2.7%) |
+| Selected for judging | 808,594 (cross-repo ≥0.80 + same-repo [0.80, 0.999)) |
+| Actually judged | 599,250 (74%; 209,344 skipped — source unavailable) |
+| Disconnects (\|a−b\| ≥ 2) | 53,769 (9.0% of judged) |
+
+### Cross-Repo Score Distributions (23,032 pairs)
+
+| Prompt | Avg | 0 | 1 | 2 | 3 |
+|--------|-----|---|---|---|---|
+| a — signature only | 0.65 | 54.3% | 29.9% | 12.7% | 3.2% |
+| b — body (names redacted) | 0.55 | 62.7% | 22.4% | 11.7% | 3.2% |
+| c — overall | 0.57 | 58.3% | 27.3% | 13.5% | **0.9%** |
+
+**Precision@score_c≥2**: 14.4% of cross-repo pairs at cosine_sim ≥ 0.80 have meaningful functional similarity. LLM judging is essential for filtering training data.
+
+### Key Findings
+
+#### 1. High false-positive rate at cosine sim ≥ 0.80
+
+58.3% of cross-repo pairs are functionally unrelated (score_c=0) despite cosine similarity ≥ 0.80. The embedding space captures syntactic surface patterns (indentation depth, token distribution, call patterns) that transfer across unrelated functions. Threshold-based filtering alone is insufficient for training data curation.
+
+#### 2. 209 gold cross-repo equivalents (score_c=3)
+
+The most valuable subset — same algorithm implemented independently in different repositories:
+
+| Query | Neighbour | Sim | a | b | c | Pattern |
+|-------|-----------|-----|---|---|---|---------|
+| `is_forward_ref` (strawberry-graphql) | `is_fwd_ref` (sqlalchemy) | 0.964 | 2 | 3 | 3 | same type-check, abbreviated name |
+| `__str__` (strawberry-graphql) | `__str__` (EventGhost) | 0.943 | 2 | 2 | 3 | same repr pattern |
+| `GetItemData` (EventGhost) | `_get_by_int_impl` (sqlalchemy) | 0.914 | 1 | 3 | 3 | same index-lookup body, different names |
+| `__call__` (strawberry-graphql) | `_util_async_run` (sqlalchemy) | 0.899 | 1 | 3 | 3 | same async wrapper, completely different names |
+
+The `is_forward_ref` ↔ `is_fwd_ref` pair is the clearest case: two teams independently implemented the same forward-reference type check with the same algorithm. The embedding captures this semantic equivalence at sim=0.964 despite the functions living in different codebases and carrying different (but semantically linked) names.
+
+The `__call__` ↔ `_util_async_run` pair (a=1, b=3) is the canonical **name_misleads** case: the signatures suggest no relationship, but both implement the same async runner wrapper pattern. A model that correctly clusters these functions must have learned the algorithm, not the name.
+
+#### 3. Score asymmetry: signatures score higher than bodies
+
+Average signature score (0.65) > average body score (0.55) across cross-repo pairs. The embedding is more sensitive to naming conventions and argument patterns than to algorithmic content. Functions sharing naming conventions (`get_`, `_handle_`, `_process_`) get pulled together even when their implementations differ — a dominant source of false positives.
+
+#### 4. Disconnect cases: same algorithm, different names (53,769 pairs)
+
+Top same-repo disconnects at sim≈0.999 include `init`, `pairs`, and `merge` functions in googleapis and sqlalchemy where the body is implementation-equivalent (b=3) but the signature context diverges (a=0–1). These arise from overloaded methods across class hierarchies where the implementation pattern is copied but the constructor signature changes.
+
+### Training Data Tier Structure
+
+| Tier | Count | Criteria | Description |
+|------|-------|----------|-------------|
+| 1 — Gold equivalents | 209 | score_c=3, cross-repo | Independent implementations of same algorithm |
+| 2 — Strong cross-repo | 3,102 | score_c=2, cross-repo | Same purpose, notable implementation differences |
+| 3 — Same-repo structural variants | ~40,000 | same-repo, sim 0.80–0.999 | Copy-paste-then-diverge patterns |
+| 4 — PR-version copies | ~1,050,000 | sim ≥ 0.999 or score_c≥3 same-repo | Deduplicate to one representative per function |
+
+Tier 1 pairs are the highest-quality JEPA targets: the student that correctly predicts the body latent of `_util_async_run` from its signature alone must have learned the async wrapper abstraction rather than memorising a specific codebase's conventions. Tier 3 provides rich data for learning the direction of divergence in copy-adapt chains (see `handle_*_dict` section above).

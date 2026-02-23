@@ -108,13 +108,36 @@ Extracted hidden states from three models on a reference LRU cache implementatio
 
 ### Experiment 0.2: Nearest-Neighbour Retrieval (Completed)
 
-Built FAISS index over 28,400 function embeddings from real PR data. Key findings:
+Built FAISS index over 28,400 function embeddings from real PR data. Validated with 8 query functions (k=5), then scaled to all 4 models × 28,400 × k=10 = **1,136,000 pairs** with LLM judging on 808,594 selected pairs (see `phase0_2_nearest_neighbour_results.md`).
 
-- **Structural template detection works**: The `handle_flow_dict` / `handle_dns_dict` / `handle_device_dict` family in `iot-inspector-client` shows graded similarity (0.97 → 0.95) that precisely captures shared algorithmic skeleton (upsert-into-SQLite template) while discriminating on schema differences.
-- **Sharp discrimination boundary**: `createfunc` example shows clean step from sim=1.0 (copies) to sim=0.87 (related but algorithmically different). This is the geometric property needed for JEPA: dense, discriminative latent space.
-- **Copy-paste-then-diverge lifecycle detected**: PR history reveals temporal drift in the `handle_*_dict` family — similarity scores decay monotonically with the degree of adaptation from the original template. This is precisely the kind of structural temporal signal SWE-JEPA should learn to encode.
-- **Cross-model agreement**: Three base/smaller models agree on structural groupings. Qwen3-8B instruct diverges, grouping structurally dissimilar functions by abstract semantic similarity — useful signal but wrong geometry for structural masking targets.
-- **Model recommendation**: Qwen2.5-Coder-3B (base) at layer 18 for teacher targets.
+**Small-scale findings:**
+- **Structural template detection works**: The `handle_flow_dict` / `handle_dns_dict` / `handle_device_dict` family in `iot-inspector-client` shows graded similarity (0.97 → 0.95) that precisely captures shared algorithmic skeleton while discriminating on schema differences.
+- **Sharp discrimination boundary**: `createfunc` example shows clean step from sim=1.0 (copies) to sim=0.87 (related but algorithmically different).
+- **Copy-paste-then-diverge lifecycle detected**: Similarity scores decay monotonically with the degree of adaptation from the original template.
+- **Cross-model agreement**: Three base/smaller models agree on structural groupings. Qwen3-8B instruct diverges — wrong geometry for structural masking targets.
+
+**Full-scale findings (1.136M pairs, LLM-judged):**
+- **14.4% precision at sim ≥ 0.80** for cross-repo pairs (score_c ≥ 2). Cosine similarity alone is a weak filter; LLM judging is necessary.
+- **209 gold cross-repo equivalents** (score_c=3): independent implementations of the same algorithm across different repos (e.g., `is_forward_ref` ↔ `is_fwd_ref`, `GetItemData` ↔ `_get_by_int_impl`). These are the highest-quality JEPA targets.
+- **Score asymmetry** (sig avg 0.65 > body avg 0.55): embedding similarity is more driven by naming conventions than algorithmic content.
+- **53,769 disconnect pairs** (9%): same algorithm, different name — valuable negative signal for disentangling syntactic form from semantic content.
+- **Model recommendation confirmed**: Qwen2.5-Coder-3B (base) at layer 18 for teacher targets.
+
+### Experiment 0.3: Linear Probing for Structural Properties (Completed)
+
+Extracted 11 AST-based static properties for all 28,400 functions into `function_static_props` table. Trained Ridge/LogisticRegression linear probes on frozen embeddings with 5-fold CV. Results (see `phase0_3_linear_probing.md`):
+
+| Property | Coder-3B | Coder-3B-Inst | Q3-8B | Q3-8B-base |
+|----------|:---:|:---:|:---:|:---:|
+| LOC (R²) | 0.757 | 0.757 | 0.787 | **0.789** |
+| Cyclomatic complexity (R²) | 0.698 | 0.697 | 0.729 | **0.735** |
+| # API calls (R²) | 0.723 | 0.722 | 0.751 | **0.764** |
+| PR churn (R²) | 0.718 | 0.714 | 0.759 | **0.762** |
+| Return type cat (BAcc) | 0.934 | 0.934 | 0.941 | **0.944** |
+| Has side effects (BAcc) | 0.968 | 0.965 | 0.968 | **0.972** |
+| Has docstring (BAcc) | 0.975 | 0.976 | **0.980** | 0.979 |
+
+**Key findings**: All structural properties are linearly decodable from frozen hidden states. PR churn (R²=0.72–0.76) — the Kim et al. organizational signal — is as predictable as cyclomatic complexity. Base models outperform instruct variants for structural prediction. **Phase 0 success criteria fully met.**
 
 ---
 
@@ -137,34 +160,11 @@ Built FAISS index over 28,400 function embeddings from real PR data. Key finding
 
 #### Experiment 0.2: Nearest-neighbor retrieval validation ✅
 
-**Result**: Structural template families cluster at 0.95–0.99 cosine similarity with clean discrimination boundaries at ~0.87. Cross-model agreement validates geometry. See `phase0_2_nearest_neighbour_results.md` for full analysis.
+**Result**: Structural template families cluster at 0.95–0.99 cosine similarity. Full-scale (1.136M pairs): 14.4% precision@score_c≥2 for cross-repo pairs; 209 gold equivalents (score_c=3). See `phase0_2_nearest_neighbour_results.md`.
 
-#### Experiment 0.3: Linear probing for structural properties (Next)
+#### Experiment 0.3: Linear probing for structural properties ✅
 
-**Goal**: Test whether hidden states encode software engineering-relevant attributes. Informed by Kim et al.'s Table 4 metrics.
-
-**Steps**:
-
-1. For each function in the corpus, extract static properties:
-   - Cyclomatic complexity (Kim et al. metric C3)
-   - Fan-in / fan-out (Kim et al. metrics C1, C2 — proxy: import/call count)
-   - Lines of code (Kim et al. metric S1)
-   - Number of branches / loops
-   - Return type category (None, primitive, collection, custom object)
-   - Has side effects (I/O, mutation, state change) vs pure
-   - Number of external API calls
-   - Coupling metrics: number of external module references (proxy for Kim et al. C5.x)
-2. Train a linear layer on frozen teacher hidden states (mean-pooled) to predict each property
-3. Report accuracy / R² for each property across model sizes and layers
-
-**Extended probing targets** (motivated by Kim et al. organizational metrics):
-   - Churn proxy: number of git commits touching this function in past N months
-   - Ownership proxy: number of distinct authors
-   - Test proximity: does a corresponding test function exist in the same repo?
-
-**Success criteria**: At least some structural properties should be linearly decodable from the hidden states with reasonable accuracy. Properties that Kim et al. found most predictive of refactoring investment (dependency count, churn, developer count) are highest priority.
-
-**Deliverable**: Table of (property × model_size × layer) → linear probe accuracy.
+**Result**: All 11 AST-based properties linearly decodable from frozen hidden states (LOC R²=0.76–0.79, CC R²=0.70–0.73, PR churn R²=0.72–0.76, return type BAcc=0.93–0.94). Kim et al. organizational signal (PR churn) is as decodable as cyclomatic complexity. **Phase 0 success criteria met.** See `phase0_3_linear_probing.md`.
 
 ---
 
@@ -172,24 +172,53 @@ Built FAISS index over 28,400 function embeddings from real PR data. Key finding
 
 **Goal**: Implement and validate the core SWE-JEPA student training pipeline.
 
-#### Experiment 1.1: Minimal student training
+#### Experiment 1.1: Minimal student training (In Progress)
 
-**Steps**:
+**Approach**: Start with the simplest testable form of the JEPA hypothesis: can a predictor trained on function **signatures** (context) predict the teacher's latent for the function **body** (masked region)?
 
-1. Define the student architecture:
-   - Encoder: small transformer (e.g., 125M–350M params) that processes unmasked context
-   - Predictor: lightweight MLP or small transformer that takes encoder output + mask position embeddings and predicts latent vectors at masked positions
-2. Training data: code files from Phase 0 corpus with precomputed teacher targets
-3. Train the student to minimize L1 loss between predicted and teacher hidden states at masked function body positions
-4. Track training loss curve
+This is simpler than full per-token prediction but directly tests the core claim: the signature should constrain what kind of implementation makes sense, and the teacher's hidden state encodes that implementation structure as a dense vector.
 
-**Key design decisions to resolve**:
+**Data preparation** (`extract_student_targets.py`):
+1. For each of the 28,400 functions (model='Qwen2.5-Coder-3B'):
+   - Fetch source via overlayfs (same pipeline as Phase 0)
+   - Split source into `sig_text` (def line + docstring) and `body_text` (remaining statements)
+   - Run frozen teacher (Qwen2.5-Coder-3B, layer 18) on each part
+   - Mean-pool hidden states → `sig_embedding` (2048-dim) and `body_embedding` (2048-dim)
+2. Store in `function_student_targets` postgres table
 
-- How to represent mask positions to the student (learned position embeddings? copy from teacher's positional encoding?)
-- Whether the student sees the function signature or just surrounding file context
-- Predictor architecture: per-position MLP vs cross-attention over context
+**Student architecture** (`train_student.py`):
+```
+sig_embedding (2048)
+      │
+  [Linear 2048→1024, GELU]
+  [Linear 1024→512,  GELU]
+  [Linear 512→1024,  GELU]
+  [Linear 1024→2048       ]
+      │
+predicted_body_embedding (2048)
 
-**Success criteria**: Training loss decreases consistently. Student predictions at masked positions are closer to teacher targets than to random hidden states from other positions.
+Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
+```
+
+**Training**:
+- 80/10/10 split by **repo** (no function from a held-out repo appears in training) to prevent memorisation
+- Adam optimizer, lr=1e-3, cosine decay, batch size=256
+- Track: train/val loss, cosine similarity between predicted and actual body embeddings, rank@1 retrieval accuracy on FAISS index
+
+**Key design decisions resolved for this minimal experiment**:
+- Context = function signature only (not full file context) — cleanest test of the hypothesis
+- No per-token prediction: mean-pooled body embedding as target — minimal engineering, maximal signal
+- MLP predictor, not cross-attention — confirms the geometric structure is sufficient before adding complexity
+
+**Success criteria**:
+1. Training loss decreases consistently over epochs
+2. Predicted embeddings are geometrically closer to the correct body embedding than to random body embeddings (cosine similarity of prediction > 0.0 on held-out test set)
+3. Rank@1 retrieval: given the predicted body embedding, does the correct function's body embedding rank #1 in the FAISS index on at least 5% of test functions? (Random baseline: 1/28,400 = 0.004%)
+
+**Next design decisions** (deferred to Experiment 1.2):
+- Per-token hidden state targets (not mean-pooled)
+- Full file context encoder (not signature only)
+- Cross-attention predictor over context tokens
 
 #### Experiment 1.2: Student loss vs downstream correlation
 
