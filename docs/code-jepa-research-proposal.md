@@ -172,7 +172,7 @@ Extracted 11 AST-based static properties for all 28,400 functions into `function
 
 **Goal**: Implement and validate the core SWE-JEPA student training pipeline.
 
-#### Experiment 1.1: Minimal student training (In Progress)
+#### Experiment 1.1: Minimal student training (Completed)
 
 **Approach**: Start with the simplest testable form of the JEPA hypothesis: can a predictor trained on function **signatures** (context) predict the teacher's latent for the function **body** (masked region)?
 
@@ -210,15 +210,37 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 - No per-token prediction: mean-pooled body embedding as target — minimal engineering, maximal signal
 - MLP predictor, not cross-attention — confirms the geometric structure is sufficient before adding complexity
 
-**Success criteria**:
-1. Training loss decreases consistently over epochs
-2. Predicted embeddings are geometrically closer to the correct body embedding than to random body embeddings (cosine similarity of prediction > 0.0 on held-out test set)
-3. Rank@1 retrieval: given the predicted body embedding, does the correct function's body embedding rank #1 in the FAISS index on at least 5% of test functions? (Random baseline: 1/28,400 = 0.004%)
+**Results** (see `phase1_1_student_training.md`):
 
-**Next design decisions** (deferred to Experiment 1.2):
-- Per-token hidden state targets (not mean-pooled)
-- Full file context encoder (not signature only)
-- Cross-attention predictor over context tokens
+| Metric | Result | Baseline |
+|--------|--------|----------|
+| Training loss | 0.0074 → 0.0001 (×74 reduction) | — |
+| Test cosine sim | **0.9468** | sig→body: 0.868 / random: 0.364 |
+| Rank@1 retrieval | **0.00%** | random: 0.004% |
+
+**Key finding**: The JEPA signal is real — loss converges and predictions are directionally correct (cosine 0.9468 > random 0.364). However, rank@1 = 0% reveals the fundamental limitation: the MLP with mean-pooled signature input predicts a *type prototype* (general structural direction) not a *specific instance*. The prediction is too diffuse to beat the many similar functions in a dense corpus. This cleanly motivates the transformer encoder upgrade.
+
+#### Experiment 1.2: Transformer encoder student (Next — 8× H100)
+
+**Goal**: Replace the mean-pooled MLP with a token-level transformer encoder that attends over individual signature tokens, producing predictions specific enough for rank@1 retrieval.
+
+**Architecture**:
+- **Context encoder**: 6-layer transformer, 512 hidden, 8 heads, ~35M params — processes tokenised function signature (up to 256 tokens)
+- **Predictor**: 2-layer cross-attention transformer, ~10M params — attends over encoder output to predict body embedding
+- **Target**: mean-pooled body embedding (same as Exp 1.1) — upgrade to per-token in Exp 1.3
+- Total: ~45M params, DDP across 8× H100
+
+**Training**:
+- DDP across all 8 GPUs, batch=256 per GPU (2048 effective)
+- Mixed precision (bf16), gradient checkpointing
+- Train on 27,235 function pairs from 9 repos, repo-stratified split
+
+**Hypothesis**: Token-level attention over argument names, type annotations, return types, and docstring wording will provide the specificity needed to exceed 5% rank@1 accuracy on held-out repos.
+
+**Success criteria**:
+1. Rank@1 > 5% on held-out test repo (vs 0% for MLP baseline)
+2. Rank@10 > 20%
+3. Training loss curve shows meaningful improvement over MLP baseline
 
 #### Experiment 1.2: Student loss vs downstream correlation
 
