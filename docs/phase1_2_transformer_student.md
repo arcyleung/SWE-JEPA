@@ -41,7 +41,6 @@ Split is by **repo** — no function from a held-out repo appears in training.
 | Attention heads | 8 |
 | Dropout | 0.1 |
 | Precision | BF16 (frozen Qwen), FP32 (predictor) |
-| GPUs | 8× H100 80GB HBM3 |
 
 ## Loss / Cosine Curve (sampled)
 
