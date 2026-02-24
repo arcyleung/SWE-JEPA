@@ -1,5 +1,5 @@
 """
-Experiment 1.2: SWE-JEPA transformer encoder student (8× H100 DDP).
+Experiment 1.2: SWE-JEPA transformer encoder student.
 
 Prerequisite: store_sig_texts.py must have populated sig_text / body_text
               columns in function_student_targets.
@@ -670,7 +670,6 @@ Corpus size (for retrieval): **{res['corpus']:,}** functions.
 | Attention heads | {a['nhead']} |
 | Dropout | {a['dropout']} |
 | Precision | BF16 (frozen Qwen), FP32 (predictor) |
-| GPUs | {res['world_size']}× H100 80GB HBM3 |
 
 ## Test Set Results
 

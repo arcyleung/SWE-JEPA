@@ -1,22 +1,29 @@
 """
-Experiment 1.4: SWE-JEPA with InfoNCE contrastive loss.
+Experiment 2.1: InfoNCE with hard negative mining.
 
-Same architecture and dataset as Exp 1.3, but replaces SmoothL1 reconstruction
-with InfoNCE contrastive loss.  Cross-GPU body embeddings are gathered at each
-training step, giving 512 negatives per anchor (8 GPUs × batch 64).
+Extends Exp 1.4 by adding LLM-judged hard negatives to the InfoNCE denominator.
 
-Key changes from Exp 1.3:
-  - Loss: InfoNCE with learnable temperature (init τ=0.07)
-  - L2-normalise SigPredictor output before loss
-  - dist.all_gather body embeddings for cross-GPU negatives
-  - Per-epoch FAISS val Rank@k (early stopping on Rank@10)
+Exp 1.4 reached a plateau at val Rank@10 ~4% because 512 random in-batch negatives
+are nearly always easy (unrelated functions).  Hard negatives are pairs where the
+teacher embedding is HIGH (cosim ≥ 0.80) but the LLM judge says they are
+functionally UNRELATED (score_c ≤ 1).  Including these in the denominator forces
+the model to distinguish confusable functions.
+
+Key changes from Exp 1.4:
+  - Load hard_negatives.json: {function_id: {"0": [...], "1": [...]}}
+  - Pre-load body_n as a GPU tensor for O(1) index lookup
+  - Each training step: append the union of hard-neg body embeddings for the
+    current batch to all_body before InfoNCE (positive label index unchanged)
+  - Hard negatives are only drawn from the training split
 
 Usage:
-  torchrun --nproc-per-node=8 train_student_1_4.py
-  torchrun --nproc-per-node=8 train_student_1_4.py --epochs 100 --batch-size 64
+  torchrun --nproc-per-node=8 train_student_2_1.py
+  torchrun --nproc-per-node=8 train_student_2_1.py --epochs 100 --batch-size 64
+  torchrun --nproc-per-node=8 train_student_2_1.py --hn-max-score-c 0  # score_c=0 only
 """
 
 import argparse
+import json
 import math
 import os
 import random
@@ -45,8 +52,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 TEACHER_PATH = '/home/original_models/Qwen2.5-Coder-3B'
 TEACHER_LAYER = 18          # 0-indexed; hidden_states[19] in HF convention
 MAX_SIG_TOKENS = 256        # signatures are short; 256 covers >99% of cases
+HARD_NEG_PATH = os.path.join(os.path.dirname(__file__), 'hard_negatives.json')
 RESULTS_FILE = os.path.join(os.path.dirname(__file__),
-                             'docs', 'phase1_4_infoNCE.md')
+                             'docs', 'phase2_1_hard_negatives.md')
 
 
 # ── InfoNCE loss ──────────────────────────────────────────────────────────────
@@ -190,6 +198,7 @@ class SigBodyDataset(Dataset):
     """
     Pre-tokenised (sig_text → token IDs) with stored body embeddings.
     body_emb is already mean-centred + L2-normalised.
+    function_id is included so the training loop can look up hard negatives.
     """
 
     def __init__(
@@ -197,11 +206,13 @@ class SigBodyDataset(Dataset):
         input_ids: list[list[int]],
         attention_masks: list[list[int]],
         body_embs: np.ndarray,
+        function_ids: list[int],
     ):
-        assert len(input_ids) == len(body_embs)
-        self.input_ids      = input_ids
+        assert len(input_ids) == len(body_embs) == len(function_ids)
+        self.input_ids       = input_ids
         self.attention_masks = attention_masks
-        self.body_embs      = body_embs.astype(np.float32)
+        self.body_embs       = body_embs.astype(np.float32)
+        self.function_ids    = function_ids
 
     def __len__(self):
         return len(self.body_embs)
@@ -211,6 +222,7 @@ class SigBodyDataset(Dataset):
             'input_ids':      self.input_ids[idx],
             'attention_mask': self.attention_masks[idx],
             'body_emb':       self.body_embs[idx],
+            'function_id':    self.function_ids[idx],
         }
 
 
@@ -220,6 +232,7 @@ def collate_fn(batch: list[dict]) -> dict[str, torch.Tensor]:
     input_ids_t      = torch.zeros(len(batch), max_len, dtype=torch.long)
     attention_mask_t = torch.zeros(len(batch), max_len, dtype=torch.long)
     body_embs_t      = torch.stack([torch.tensor(x['body_emb']) for x in batch])
+    function_ids_t   = torch.tensor([x['function_id'] for x in batch], dtype=torch.long)
     for i, x in enumerate(batch):
         n = len(x['input_ids'])
         input_ids_t[i, :n]      = torch.tensor(x['input_ids'],      dtype=torch.long)
@@ -228,6 +241,7 @@ def collate_fn(batch: list[dict]) -> dict[str, torch.Tensor]:
         'input_ids':      input_ids_t,
         'attention_mask': attention_mask_t,
         'body_emb':       body_embs_t,
+        'function_id':    function_ids_t,
     }
 
 
@@ -431,7 +445,7 @@ def train(args, rank: int, world_size: int):
     device  = torch.device(f'cuda:{rank}')
 
     if is_main:
-        print(f"SWE-JEPA Experiment 1.4: InfoNCE Contrastive Loss")
+        print(f"SWE-JEPA Experiment 2.1: InfoNCE + Hard Negative Mining")
         print(f"{'='*60}")
         print(f"  World size: {world_size}  |  BF16 mixed precision")
         print(f"  Batch/GPU:  {args.batch_size}  "
@@ -505,12 +519,46 @@ def train(args, rank: int, world_size: int):
         print(f"  sig→body cosine (MLP baseline):  {bl_cos:.4f}")
         print(f"  random embedding cosine:          {rand_cos:.4f}", flush=True)
 
+    # ── Hard negative lookup ──────────────────────────────────────────────────
+    # fid_to_idx: function_id → position in body_n / fids arrays
+    fid_to_idx: dict[int, int] = {fid: i for i, fid in enumerate(fids)}
+    train_idx_set = set(train_idx)  # only draw hard negs from train split
+
+    hard_neg_lookup: dict[int, list[int]] = {}
+    if os.path.exists(HARD_NEG_PATH):
+        if is_main:
+            print(f"Loading hard negatives from {HARD_NEG_PATH} …", flush=True)
+        with open(HARD_NEG_PATH) as f:
+            raw_hn = json.load(f)
+        # Flatten score_c buckets; filter by max_score_c arg
+        for fid_str, buckets in raw_hn.items():
+            fid = int(fid_str)
+            combined = []
+            for sc_str, neg_ids in buckets.items():
+                if int(sc_str) <= args.hn_max_score_c:
+                    combined.extend(neg_ids)
+            if combined:
+                hard_neg_lookup[fid] = combined
+        if is_main:
+            n_hn_pairs = sum(len(v) for v in hard_neg_lookup.values())
+            print(f"  {len(hard_neg_lookup):,} anchors with hard negatives "
+                  f"({n_hn_pairs:,} pairs, score_c≤{args.hn_max_score_c})",
+                  flush=True)
+    else:
+        if is_main:
+            print(f"WARNING: {HARD_NEG_PATH} not found — running without hard negatives",
+                  flush=True)
+
+    # Pre-load full body_n as a GPU tensor for O(1) hard-neg body lookup
+    body_n_gpu = torch.tensor(body_n, dtype=torch.float32, device=device)
+
     # ── Datasets ──────────────────────────────────────────────────────────────
     def make_ds(idx: list[int]) -> SigBodyDataset:
         return SigBodyDataset(
             [input_ids_list[i]      for i in idx],
             [attention_mask_list[i] for i in idx],
             body_n[idx],
+            [fids[i]               for i in idx],
         )
 
     train_ds = make_ds(train_idx)
@@ -599,6 +647,25 @@ def train(args, rank: int, world_size: int):
                 gathered = [torch.zeros_like(body_n_t) for _ in range(world_size)]
                 dist.all_gather(gathered, body_n_t)
                 all_body = torch.cat(gathered, dim=0)   # [world_size*B, D]
+
+                # Hard negative augmentation: append LLM-judged confusable bodies
+                # Union of hard neg indices for the whole batch → shared extra columns
+                if hard_neg_lookup:
+                    batch_fids = batch['function_id'].tolist()
+                    batch_indices = {fid_to_idx[fid] for fid in batch_fids
+                                     if fid in fid_to_idx}
+                    hn_indices: set[int] = set()
+                    for fid in batch_fids:
+                        for hn_fid in hard_neg_lookup.get(fid, []):
+                            idx = fid_to_idx.get(hn_fid)
+                            # Only use hard negs from train split; skip batch members
+                            if idx is not None and idx in train_idx_set \
+                                    and idx not in batch_indices:
+                                hn_indices.add(idx)
+                    if hn_indices:
+                        hn_idx_list = list(hn_indices)
+                        hn_bodies = body_n_gpu[hn_idx_list]   # [K, D]  already normed
+                        all_body  = torch.cat([all_body, hn_bodies], dim=0)  # [N+K, D]
 
                 loss = criterion(pred_n, all_body, rank_offset=rank * len(pred_n))
                 loss.backward()
@@ -717,7 +784,7 @@ def train(args, rank: int, world_size: int):
 
         # Save checkpoint
         ckpt_path = os.path.join(os.path.dirname(__file__),
-                                 'student_1_4_ckpt.pt')
+                                 'student_2_1_ckpt.pt')
         torch.save({'model_state': best_state, 'args': vars(args),
                     'emb_dim': emb_dim, 'd_model': args.d_model}, ckpt_path)
         print(f"\nCheckpoint saved to {ckpt_path}", flush=True)
@@ -744,7 +811,7 @@ def write_results(res: dict):
     eff_batch = a['batch_size'] * res['world_size']
     r1_vs_mlp = "improvement over MLP (0.00%)" if res['r1'] > 0 else \
                 "no improvement over MLP (0.00%)"
-    report = f"""# Experiment 1.4: InfoNCE Contrastive Loss
+    report = f"""# Experiment 2.1: InfoNCE + Hard Negative Mining
 
 **Date**: {datetime.now().strftime('%Y-%m-%d')}
 **Teacher**: Qwen2.5-Coder-3B, layer {TEACHER_LAYER} (frozen)
@@ -849,6 +916,9 @@ def main():
     ap.add_argument('--num-layers',    type=int,   default=2)
     ap.add_argument('--dropout',        type=float, default=0.1)
     ap.add_argument('--init-temp',      type=float, default=0.07)
+    ap.add_argument('--hn-max-score-c', type=int,   default=1,
+                    help='Max LLM judge score_c for hard negatives (0=definite FP only, '
+                         '1=include marginal, default 1)')
     args = ap.parse_args()
 
     # Normalise hyphen → underscore (argparse dest uses _)

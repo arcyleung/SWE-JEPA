@@ -39,7 +39,6 @@ Corpus size (for retrieval): **49,631** functions.
 | Attention heads | 8 |
 | Dropout | 0.1 |
 | Precision | BF16 (frozen Qwen), FP32 (predictor) |
-| GPUs | 8× H100 80GB HBM3 |
 
 ## Results
 
@@ -103,7 +102,7 @@ Directly optimises the retrieval objective. Given a predicted embedding `p_i` an
 L = -log( exp(sim(p_i, b_i)/τ) / Σ_j exp(sim(p_i, b_j)/τ) )
 ```
 
-Negatives `b_j` come from other functions in the batch (easy to collect: with effective batch 512 and cross-GPU gather on 8 H100s, all 512 body embeddings are available as negatives per step).
+Negatives `b_j` come from other functions in the batch (easy to collect: with effective batch 512 and cross-GPU gather on 8 GPUs, all 512 body embeddings are available as negatives per step).
 
 **Why this directly addresses the failure**: the loss explicitly penalises `p_i` being close to `b_j` for j ≠ i. Even if all functions in the same repo have similar mean-pooled bodies, the contrastive loss will push predictions apart until they rank the correct target above all negatives.
 

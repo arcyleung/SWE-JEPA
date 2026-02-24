@@ -220,7 +220,7 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 
 **Key finding**: The JEPA signal is real — loss converges and predictions are directionally correct (cosine 0.9468 > random 0.364). However, rank@1 = 0% reveals the fundamental limitation: the MLP with mean-pooled signature input predicts a *type prototype* (general structural direction) not a *specific instance*. The prediction is too diffuse to beat the many similar functions in a dense corpus. This cleanly motivates the transformer encoder upgrade.
 
-#### Experiment 1.2: Transformer encoder student (Next — 8× H100)
+#### Experiment 1.2: Transformer encoder student
 
 **Goal**: Replace the mean-pooled MLP with a token-level transformer encoder that attends over individual signature tokens, producing predictions specific enough for rank@1 retrieval.
 
@@ -228,7 +228,7 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 - **Context encoder**: 6-layer transformer, 512 hidden, 8 heads, ~35M params — processes tokenised function signature (up to 256 tokens)
 - **Predictor**: 2-layer cross-attention transformer, ~10M params — attends over encoder output to predict body embedding
 - **Target**: mean-pooled body embedding (same as Exp 1.1) — upgrade to per-token in Exp 1.3
-- Total: ~45M params, DDP across 8× H100
+- Total: ~45M params, DDP across 8 GPUs
 
 **Training**:
 - DDP across all 8 GPUs, batch=256 per GPU (2048 effective)
@@ -253,6 +253,12 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 3. Plot student training loss vs downstream metrics
 
 **Success criteria**: Strong correlation (R² > 0.8) between student loss and at least one downstream metric. This would validate that the SWE-JEPA training signal is meaningful, analogous to SALT's finding.
+
+#### Experiment 1.3: Data diversity/ volume study
+- Repeat Experiment 1.2 with increased diversity of function sampled across different repos, increase train set size and observe how retrieval performance improvements scale.
+
+#### Experiment 1.4: InfoNCE vs default Cross Entropy Loss
+- Standard CE requires fixed classes upfront (which doesn'twork for an open-ended corpus), while InfoNCE uses the other functions in the current batch as dynamic "classes" each step. Repeat Experiment 1.3 with
 
 ---
 

@@ -700,7 +700,6 @@ Corpus size (for retrieval): **{res['corpus']:,}** functions.
 | Attention heads | {a['nhead']} |
 | Dropout | {a['dropout']} |
 | Precision | BF16 (frozen Qwen), FP32 (predictor) |
-| GPUs | {res['world_size']}× H100 80GB HBM3 |
 
 ## Results
 
