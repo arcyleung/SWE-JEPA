@@ -15,12 +15,13 @@ Key differences from Exp 2.2:
     the other workloads on the node leave < 18 GB free VRAM per card.
   - Student: DDP across all ranks (multi-node works via torchrun + NCCL)
 
-Single-node (8 GPUs):
+Single-node (8 GPUs, 80 GB each):
   source .venv/bin/activate && torchrun --nproc-per-node=8 train_student_3_0.py
 
-Multi-node (8 nodes × 8 GPUs = 64 total), run on EVERY node:
+Multi-node (4 nodes × 8 GPUs = 32 total, 80 GB VRAM), run on EVERY node:
+  export NCCL_SOCKET_IFNAME=bond0; export NCCL_IB_HCA=mlx5; export NCCL_GID_INDEX=3
   source .venv/bin/activate && torchrun \\
-    --nnodes=8 \\
+    --nnodes=4 \\
     --nproc-per-node=8 \\
     --rdzv-backend=c10d \\
     --rdzv-endpoint=10.10.110.20:29500 \\
@@ -28,6 +29,12 @@ Multi-node (8 nodes × 8 GPUs = 64 total), run on EVERY node:
 
 If OOM with 16 GB teacher per GPU, add --fsdp-teacher:
   torchrun ... train_student_3_0.py --fsdp-teacher
+
+VRAM budget per card (80 GB, 32 total ranks):
+  Teacher Qwen3-8B bf16   ~16 GB
+  Teacher activations      ~0.5 GB  (2× no_grad forward, batch=64, seq=256, dim=4096)
+  Student + Adam states    ~0.4 GB
+  Headroom                ~63 GB   → default batch=64; batch=128 also fits
 """
 
 import argparse
@@ -124,11 +131,17 @@ class _TransformerBlock(nn.Module):
 
 
 class SigPredictorV2(nn.Module):
-    """Same architecture as Exp 2.2 but d_in/d_out=4096 for the 8B teacher."""
+    """Same architecture as Exp 2.2 but d_in/d_out=4096 for the 8B teacher.
+
+    in_norm: LayerNorm applied to each token's 4096-dim hidden state before
+    projection.  Removes per-token anisotropy (all tokens pointing in a shared
+    mean direction) which is more severe for Qwen3-8B than for 3B.
+    """
 
     def __init__(self, d_in=4096, d_model=512, nhead=8, num_layers=2,
                  d_out=4096, dropout=0.1, max_body_tokens=MAX_BODY_TOKENS):
         super().__init__()
+        self.in_norm      = nn.LayerNorm(d_in)
         self.proj_in      = nn.Linear(d_in, d_model)
         self.enc_blocks   = nn.ModuleList(
             [_TransformerBlock(d_model, nhead, dropout) for _ in range(num_layers)])
@@ -139,7 +152,7 @@ class SigPredictorV2(nn.Module):
         self.proj_token   = nn.Linear(d_model, d_out)
 
     def _encode(self, hidden_states, attention_mask):
-        x = self.proj_in(hidden_states.float())
+        x = self.proj_in(self.in_norm(hidden_states.float()))
         pad_mask = (attention_mask == 0)
         for block in self.enc_blocks:
             x = block(x, pad_mask)
@@ -246,15 +259,10 @@ def load_data(tokenizer):
         SELECT fst.function_id,
                fst.sig_text,
                fst.body_text,
-               fe8b.instance_id
+               fe.instance_id
         FROM function_student_targets fst
-        JOIN function_embeddings fe3b
-          ON fe3b.id = fst.function_id
-        JOIN function_embeddings fe8b
-          ON fe8b.instance_id     = fe3b.instance_id
-         AND fe8b.feature_file    = fe3b.feature_file
-         AND fe8b.feature_function = fe3b.feature_function
-         AND fe8b.model_name      = 'Qwen3-8B-base'
+        JOIN function_embeddings fe
+          ON fe.id = fst.function_id
         WHERE fst.sig_text IS NOT NULL
           AND fst.body_text IS NOT NULL
         ORDER BY fst.function_id
@@ -321,59 +329,79 @@ def repo_split(repos, train_frac=0.80, val_frac=0.10, seed=42):
 
 def precompute_body_embs(
     frozen_qwen: nn.Module,
+    sig_ids_list: list,
+    sig_masks_list: list,
     body_ids_list: list,
     body_masks_list: list,
     device: torch.device,
-    rank: int,
-    world_size: int,
     emb_dim: int,
     batch_size: int = 16,
     is_main: bool = False,
 ) -> np.ndarray:
     """
-    Compute mean-pooled layer-TEACHER_LAYER hidden states for all body texts.
+    Compute mean-pooled layer-TEACHER_LAYER hidden states for all body texts,
+    using sig+body concatenated as the forward-pass input.
 
-    Work is distributed: rank r processes indices [r, r+world_size, r+2*world_size, ...].
-    Results are gathered via all_gather_object so every rank holds the full array.
+    Feeding the full function (sig then body) gives the model the signature
+    as context when producing body token representations.  This removes the
+    severe anisotropy (~0.37 random cosine) that arises when the teacher sees
+    body-only text: without the signature, common body-opening patterns dominate
+    and all embeddings cluster in a few directions.  Full-function embeddings
+    stored in the DB confirm near-isotropy (random cosine ~0.016).
 
-    Uses the full (non-FSDP) model; call this BEFORE FSDP wrapping.
+    Only the body token positions are mean-pooled to form the target embedding,
+    faithfully matching the JEPA objective: predict the full-context
+    representation of the masked (body) region from the visible (sig) region.
+
+    Every rank independently computes the full corpus — no cross-node collective.
     """
     N = len(body_ids_list)
-    local_indices = list(range(rank, N, world_size))
-    local_embs: dict[int, np.ndarray] = {}
+    body_embs = np.zeros((N, emb_dim), dtype=np.float32)
+    n_batches = (N + batch_size - 1) // batch_size
+    log_every = max(1, n_batches // 10)
 
     if is_main:
-        print(f"  Pre-computing body embeddings for {N:,} functions "
-              f"({len(local_indices):,} per rank) …", flush=True)
+        print(f"  Pre-computing body embeddings (sig+body context) for {N:,} functions "
+              f"({n_batches} batches, logging every {log_every}) …", flush=True)
 
     frozen_qwen.eval()
     with capture_layer(frozen_qwen, TEACHER_LAYER) as cap, torch.no_grad():
-        for start in range(0, len(local_indices), batch_size):
-            batch_raw = local_indices[start: start + batch_size]
-            bsz = len(batch_raw)
-            max_len = max(len(body_ids_list[i]) for i in batch_raw)
-            ids  = torch.zeros(bsz, max_len, dtype=torch.long,  device=device)
-            mask = torch.zeros(bsz, max_len, dtype=torch.long,  device=device)
-            for j, i in enumerate(batch_raw):
-                n = len(body_ids_list[i])
-                ids[j,  :n] = torch.tensor(body_ids_list[i],   dtype=torch.long)
-                mask[j, :n] = torch.tensor(body_masks_list[i], dtype=torch.long)
+        for batch_no, start in enumerate(range(0, N, batch_size)):
+            batch_idx = range(start, min(start + batch_size, N))
+            bsz = len(batch_idx)
+
+            # Build sig+body concatenated sequences
+            sig_lens  = [len(sig_ids_list[i])  for i in batch_idx]
+            body_lens = [len(body_ids_list[i]) for i in batch_idx]
+            max_total = max(s + b for s, b in zip(sig_lens, body_lens))
+
+            ids  = torch.zeros(bsz, max_total, dtype=torch.long, device=device)
+            mask = torch.zeros(bsz, max_total, dtype=torch.long, device=device)
+            # body_start[j] = position where body tokens begin for sample j
+            body_start = []
+            for j, i in enumerate(batch_idx):
+                sl = sig_lens[j];  bl = body_lens[j]
+                ids[j,    :sl]       = torch.tensor(sig_ids_list[i],    dtype=torch.long)
+                ids[j,  sl:sl+bl]   = torch.tensor(body_ids_list[i],   dtype=torch.long)
+                mask[j,   :sl]       = torch.tensor(sig_masks_list[i],  dtype=torch.long)
+                mask[j, sl:sl+bl]   = torch.tensor(body_masks_list[i], dtype=torch.long)
+                body_start.append(sl)
+
             cap.clear()
             frozen_qwen(input_ids=ids, attention_mask=mask)
-            hs   = cap[-1].float()                            # [B, T, dim] bf16→f32
-            m    = mask.float().unsqueeze(-1)                 # [B, T, 1]
-            embs = (hs * m).sum(1) / m.sum(1).clamp(min=1.0) # [B, dim]
-            for j, i in enumerate(batch_raw):
-                local_embs[i] = embs[j].cpu().numpy()
+            hs = cap[-1].float()                              # [B, T_total, dim]
 
-    # Gather all rank dicts → reconstruct full array
-    all_local: list[dict] = [None] * world_size
-    dist.all_gather_object(all_local, local_embs)
+            # Mean-pool only body token positions for each sample
+            for j, i in enumerate(batch_idx):
+                bs = body_start[j]
+                bl = body_lens[j]
+                body_hs = hs[j, bs:bs+bl]                    # [bl, dim]
+                body_m  = mask[j, bs:bs+bl].float().unsqueeze(-1)  # [bl, 1]
+                emb = (body_hs * body_m).sum(0) / body_m.sum(0).clamp(min=1.0)
+                body_embs[i] = emb.cpu().numpy()
 
-    body_embs = np.zeros((N, emb_dim), dtype=np.float32)
-    for rank_dict in all_local:
-        for idx, emb in rank_dict.items():
-            body_embs[idx] = emb
+            if is_main and (batch_no + 1) % log_every == 0:
+                print(f"    body_embs {batch_no + 1}/{n_batches} batches …", flush=True)
 
     if is_main:
         bad = ~np.isfinite(body_embs).all(axis=1)
@@ -579,7 +607,7 @@ def train(args, rank, world_size, local_rank):
         print(f"\nLoading frozen Qwen3-8B-base on cuda:{local_rank} …", flush=True)
     frozen_qwen = AutoModelForCausalLM.from_pretrained(
         TEACHER_PATH,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         trust_remote_code=True,
     ).to(device).eval()
     for p in frozen_qwen.parameters():
@@ -587,12 +615,13 @@ def train(args, rank, world_size, local_rank):
 
     emb_dim = frozen_qwen.config.hidden_size  # 4096
 
-    # ── Pre-compute body embeddings (distributed, uses full model) ────────────
+    # ── Pre-compute body embeddings (each rank independently, no collective) ──
     if is_main:
-        print(f"\nPre-computing body embeddings (one-time, ~5 min) …", flush=True)
+        print(f"\nPre-computing body embeddings (one-time, ~90 s/rank) …", flush=True)
     body_embs = precompute_body_embs(
-        frozen_qwen, body_ids_list, body_masks_list,
-        device, rank, world_size, emb_dim,
+        frozen_qwen, sig_ids_list, sig_masks_list,
+        body_ids_list, body_masks_list,
+        device, emb_dim,
         batch_size=args.batch_size, is_main=is_main,
     )
     if is_main:
@@ -691,6 +720,16 @@ def train(args, rank, world_size, local_rank):
     n_params = sum(p.numel() for p in predictor.parameters())
     if is_main:
         print(f"\nSigPredictorV2: {n_params:,} trainable parameters", flush=True)
+
+    # Explicit barrier before DDP so we can tell if a rank is slow vs NCCL failing.
+    # If this hangs, set NCCL_SOCKET_IFNAME to the correct inter-node interface, e.g.:
+    #   export NCCL_SOCKET_IFNAME=eth0   (run `ip route get 10.10.110.20` to find it)
+    #   export NCCL_DEBUG=WARN
+    print(f"[rank {rank}] reached DDP barrier", flush=True)
+    dist.barrier()
+    if is_main:
+        print("All ranks at DDP barrier — initialising DDP …", flush=True)
+
     ddp_predictor = DDP(predictor, device_ids=[local_rank])
 
     criterion = InfoNCELoss(init_temp=args.init_temp).to(device)
@@ -700,7 +739,8 @@ def train(args, rank, world_size, local_rank):
     scheduler = cosine_schedule_with_warmup(
         optimizer, warmup_epochs=args.warmup_epochs, total_epochs=args.epochs)
 
-    # FAISS index for per-epoch val Rank@10 (rank 0)
+    # FAISS index for per-epoch val Rank@10 (rank 0 only; None on other ranks)
+    faiss_index = None
     if is_main or args.fsdp_teacher:
         faiss_index = faiss.IndexFlatIP(body_n_corpus.shape[1])
         faiss_index.add(body_n_corpus.astype(np.float32))
@@ -804,6 +844,15 @@ def train(args, rank, world_size, local_rank):
             patience_count = 0
         else:
             patience_count += 1
+
+        if is_main and epoch % args.checkpoint_every == 0:
+            periodic_path = os.path.join(
+                os.path.dirname(__file__), f'student_3_0_epoch{epoch:04d}.pt')
+            torch.save({'model_state': {k: v.cpu().clone()
+                                        for k, v in ddp_predictor.module.state_dict().items()},
+                        'epoch': epoch, 'args': vars(args),
+                        'emb_dim': emb_dim, 'd_model': args.d_model}, periodic_path)
+            print(f"  Periodic checkpoint → {periodic_path}", flush=True)
 
         if patience_count >= args.patience:
             if is_main:
@@ -970,16 +1019,17 @@ Corpus (retrieval): **{res['corpus']:,}** functions.
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--epochs',             type=int,   default=200)
-    ap.add_argument('--batch-size',         type=int,   default=16)
+    ap.add_argument('--batch-size',         type=int,   default=64)
     ap.add_argument('--lr',                 type=float, default=1e-4)
     ap.add_argument('--warmup-epochs',      type=int,   default=5)
     ap.add_argument('--patience',           type=int,   default=15)
-    ap.add_argument('--d-model',            type=int,   default=512)
+    ap.add_argument('--checkpoint-every',   type=int,   default=20)
+    ap.add_argument('--d-model',            type=int,   default=1024)
     ap.add_argument('--nhead',              type=int,   default=8)
     ap.add_argument('--num-layers',         type=int,   default=2)
     ap.add_argument('--dropout',            type=float, default=0.1)
     ap.add_argument('--init-temp',          type=float, default=0.07)
-    ap.add_argument('--token-loss-weight',  type=float, default=0.1)
+    ap.add_argument('--token-loss-weight',  type=float, default=0.0)
     ap.add_argument('--fsdp-teacher',       action='store_true', default=False,
                     help='Wrap frozen teacher with intra-node FSDP FULL_SHARD '
                          '(reduces teacher VRAM from ~16 GB to ~2 GB per GPU). '

@@ -307,6 +307,64 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 
 ---
 
+### Phase 4: Downstream Validation — Defect Prediction & Efficiency
+
+**Goal**: Test whether SWE-JEPA representations encode non-functional software engineering properties, and demonstrate compute efficiency versus supervised baselines.
+
+#### Experiment 4.1: Defect prediction probe *(next experiment)*
+
+**Motivation**: Exp 3.0 achieves 47.52% Rank@10, confirming the JEPA representations are highly discriminative for retrieval. The next question is whether they encode **defect-proneness** — a non-functional property not visible in the function signature alone, but which expert engineers infer from signature-level cues (interface complexity, naming, coupling). This directly tests the proposal's central claim that the JEPA objective forces emergence of abstract software engineering reasoning.
+
+**Data**: `followups_function` table — 62,071 rows linking feature PR function implementations to followup PRs across 144 repos.
+
+| Column | Description |
+|--------|-------------|
+| `feature_instance_id`, `feature_file`, `feature_function` | Identifies the function implementation in the feature PR |
+| `followup_pr_number` | A PR that subsequently touched the same code |
+| `followup_category` | `bugfix` / `feature` / `docs` / `maintenance` |
+| `hunk_overlap_fraction` | Fraction of the function's lines overlapping the followup PR's hunk |
+
+- **15,296 distinct function anchors**; `maintenance` excluded (dependency bumps, not defect signal)
+- **Labels**: `has_bugfix` (binary, 48%/52% — naturally balanced), `n_bugfix_prs` (count 0–5+)
+
+**Method**:
+
+```
+For each of 15,296 function anchors:
+  Encode sig_text with:
+    A) Frozen Qwen3-8B-base teacher (layer 18, mean-pool) → 4096-dim
+    B) SWE-JEPA student encoder (student_3_0_ckpt.pt)    → 4096-dim
+
+Split by repo (80/10/10). Fit linear probes (sklearn):
+  - LogisticRegression → has_bugfix  (metrics: balanced acc, AUROC, F1)
+  - Ridge              → n_bugfix_prs (metrics: R², Spearman ρ)
+
+Baselines: random, majority class, TF-IDF on sig_text, LOC + cyclomatic complexity
+Sensitivity: repeat with hunk_overlap_fraction > 0.1 (strict) vs any overlap (lenient)
+```
+
+**Success criteria**:
+
+| Criterion | Target |
+|-----------|--------|
+| Student AUROC > teacher AUROC | JEPA training encodes defect signal beyond frozen reps |
+| Student AUROC > TF-IDF baseline | Representations beat bag-of-words |
+| Student AUROC > 0.60 | Practically useful signal |
+
+**Implementation**: `extract_followup_sigs.py` (fetch sig_text at PR commit), `probe_defect_prediction.py` (encode + probe). Results → `docs/phase4_1_defect_prediction.md`.
+
+#### Experiment 4.2: Compute efficiency vs supervised fine-tuning
+
+**Goal**: Demonstrate that SWE-JEPA achieves competitive downstream performance at lower compute cost than end-to-end supervised fine-tuning, validating the proposal's efficiency claim.
+
+**Setup**: Fix a compute budget (GPU-hours). Compare:
+- SWE-JEPA student trained for N GPU-hours (frozen teacher + student training)
+- Contrastive fine-tune of equivalent model trained end-to-end for N GPU-hours
+
+**Task**: Code retrieval (Rank@10) or defect prediction (AUROC), using results from Exp 4.1 to select the most informative task.
+
+---
+
 ## Risks & Mitigations
 
 | Risk | Likelihood | Mitigation |
