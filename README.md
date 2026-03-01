@@ -93,6 +93,7 @@ Eval: Rank@1 / Rank@10 retrieval in 49,631-function FAISS corpus
 ## Key References
 
 - **SALT**: Li et al., "Rethinking JEPA: Compute-Efficient Video SSL with Frozen Teachers" (arxiv:2509.24317, 2025)
+- Logit Arithmetic Elicits Long Reasoning Capabilities Without Training (arxiv:2510.09354, 2025) https://arxiv.org/pdf/2510.09354?
 - **V-JEPA**: Bardes et al., "Revisiting Feature Prediction for Learning Visual Representations from Video" (2024)
 - **Kim et al.**: "An Empirical Study of Refactoring Challenges and Benefits at Microsoft" (IEEE TSE, 2014)
 - **Conway's Law**: Conway, "How Do Committees Invent?" (Datamation, 1968)
