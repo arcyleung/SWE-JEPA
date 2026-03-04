@@ -106,7 +106,94 @@ Sensitivity check:
 
 ---
 
+---
+
+## Planned: Experiment 4.3 — Region-Level Defect & Feature Localization
+
+### Motivation
+
+Exp 4.1 answers "does this PR have a bugfix followup?" at the PR level.  Exp 4.3
+sharpens the question to "which specific function (and line range) within this PR
+is the risky one?" — a harder and more actionable task for code review tooling.
+
+Two sub-tasks:
+- **Bugfix localization**: rank functions within a PR by predicted bugfix-proneness.
+- **Feature-extension localization**: rank functions by predicted likelihood of
+  being refactored or extended in a later feature PR.
+
+### Data: `followups_function` table (same as Exp 4.1)
+
+- `feature_function_start` / `feature_function_end`: line range of the function
+  in the feature-PR source file — the ground-truth "region" being predicted.
+- `has_bugfix` / `has_feature`: binary labels aggregated per anchor (same as 4.1).
+
+### Experiment design
+
+```
+For each test-set feature PR:
+  - Collect all function anchors from that PR
+  - Score each function with each method (teacher emb probe, student emb probe,
+    TF-IDF probe, LOC probe, random baseline)
+  - Rank functions descending by score
+  - Recall@K = # true positives in top-K / # total true positives (per PR)
+
+Evaluation:
+  - Mean Recall@K (K = 1, 3, 5, 10) over test PRs with ≥1 positive
+  - Both labels: has_bugfix and has_feature
+  - GPU-hours efficiency table (Exp 4.2 methodology):
+      Recall@10 / GPU-min × 1000
+```
+
+### Implementation plan
+
+1. `extract_followup_sigs.py` — add `feature_function_start/end` to SQL + JSONL
+   (already done; future re-runs will include line ranges)
+2. `probe_region_localization.py` — main experiment; imports `encode_all`,
+   `load_sigs`, `repo_split` from `probe_defect_prediction.py`; adds
+   `enrich_with_line_ranges` (DB query), `eval_localization`, `write_report`
+3. Results → `docs/phase4_3_region_localization.md`
+
+### Reuse check
+
+`extract_expanded_targets.py` pipeline (overlayfs → GPU inference → postgres) is
+**not needed** for this experiment — the existing `followup_sigs.jsonl` and
+cached `followup_embs.npz` (from Exp 4.1) are sufficient. Running:
+
+```bash
+# With cached embeddings (no GPU needed):
+python probe_region_localization.py --use-cache
+
+# First run (encode on GPU 0):
+python probe_region_localization.py --gpu 0
+```
+
+### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| Student R@5(bugfix) > Teacher R@5(bugfix) | JEPA ranks buggy functions higher |
+| Student R@5(bugfix) > TF-IDF R@5(bugfix) | Representations beat bag-of-words |
+| Student R@5(feature) > random baseline | Some extensibility signal learned |
+
+---
+
 ## Future directions (post-4.1)
+
+### Reframing after Exp 4.3
+
+Exp 4.3 indicates the current JEPA student objective (global retrieval geometry from
+signature-only inputs) does not reliably transfer to **within-PR ranking** tasks.
+Teacher and student signals are complementary, but neither alone is consistently best
+across bugfix and feature localization settings.
+
+Updated framing:
+- Treat frozen embeddings as a reusable representation substrate, not a full task solution.
+- Move downstream adaptation to cheap, task-specific heads and rankers.
+- Optimise directly for software-engineering outcomes (within-PR ranking, co-change,
+  refactor likelihood), not only global nearest-neighbour retrieval.
+
+Practical consequence: avoid expensive end-to-end SFT/RL; keep the backbone frozen and
+train lightweight heads/projectors with ranking-aware losses.
 
 ### Experiment 4.2 — Efficiency comparison vs SFT (Option 1 from proposal point 3)
 
@@ -118,13 +205,98 @@ Compare on a fixed compute budget:
 Natural baseline: contrastive fine-tune of Qwen3-8B-base on (sig, body) pairs directly,
 without the JEPA architecture. Cost of fine-tuning vs cost of SWE-JEPA training.
 
-### Experiment 4.3 — Latent-conditioned decoder (Phase 3 in proposal)
+### Experiment 4.4 — SE-Head Stack for Region Localization (Cheap Adaptation)
 
-Train a small decoder that takes the student's 4096-dim predicted latent and generates
-function bodies autoregressively. Evaluate with pass@k on unit tests.
+#### Motivation
 
-### Experiment 4.4 — Conway's law / architectural fit (Option 2.5)
+Exp 4.1 showed PR-level transfer (student AUROC > teacher), while Exp 4.3 showed unstable
+region-level ranking (teacher often stronger on strict bugfix localization).
+The likely mismatch is objective-level:
+
+- JEPA student training: global embedding alignment for retrieval.
+- Localization eval: relative ranking *within the same PR*.
+
+Exp 4.4 closes this gap by keeping embeddings frozen and training cheap heads directly on
+within-PR ranking objectives.
+
+#### Core hypothesis
+
+A lightweight ranking head trained on frozen representations with in-PR pairwise/listwise
+loss will outperform standalone linear probes for Recall@K localization, at negligible
+compute cost compared with SFT.
+
+#### Methods
+
+Train/evaluate the following on the same repo split as Exp 4.3:
+
+1. Pairwise ranker (primary):
+   - Inputs per function: `[teacher_emb, student_emb, tfidf_logit, loc, cc, churn_proxy]`
+   - Construct training pairs only within each feature PR:
+     - positive = `has_bugfix=1` (or `has_feature=1`)
+     - negative = `0` from same PR
+   - Loss: logistic pairwise ranking (`score_pos - score_neg`)
+2. Fusion baseline:
+   - Calibrated weighted sum of independent heads:
+     - teacher probe + student probe + TF-IDF + LOC
+   - Fit weights on val only (ridge/logistic calibration).
+3. Small MLP rank head:
+   - 2-layer MLP (e.g., 128 hidden) on concatenated frozen features.
+   - BCE + optional pairwise auxiliary term.
+
+#### Data and labels
+
+- Source table: `followups_function` (same anchor set as 4.3).
+- Tasks:
+  - Bugfix localization (`has_bugfix`) with `min_overlap` in `{0.0, 0.1}`.
+  - Feature-extension localization (`has_feature`).
+- Groups: feature PR (`feature_instance_id`) as ranking unit.
+
+#### Evaluation
+
+Primary:
+- Mean Recall@K over PRs with at least one positive (`K = 1, 3, 5, 10`).
+- Mean Reciprocal Rank (MRR) per PR.
+
+Secondary:
+- PR-AUC for pooled instance scores.
+- Stability across random seeds (3 seeds).
+- Efficiency metric: `R@10 / GPU-min × 1000` (Exp 4.2 convention).
+
+#### Implementation plan
+
+1. `probe_region_localization.py`
+   - add `--model pairwise|fusion|mlp|linear`
+   - add pairwise training data builder grouped by `feature_instance_id`
+   - add MRR and seed-averaged reporting
+2. `train_region_ranker.py` (new)
+   - reusable ranker training (pairwise/listwise) on cached embeddings/features
+   - writes checkpoint and JSON metrics
+3. `docs/phase4_4_se_heads_localization.md`
+   - table: all methods × labels × overlap thresholds
+   - ablation: teacher-only, student-only, fusion
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| Pairwise ranker R@5(bugfix, overlap=0.1) > Teacher linear probe | +3 pp absolute |
+| Fusion R@10(bugfix) ≥ max(Teacher, Student, TF-IDF, LOC) | Strictly best or tied-best |
+| Pairwise ranker R@10(feature) > random baseline | +5 pp absolute |
+| Training cost (all heads) | < 60 GPU-min total |
+
+#### Why this is an "easy win"
+
+- Reuses existing `followup_embs.npz` and `followup_sigs.jsonl`; no re-encoding required.
+- No full-model fine-tuning; only tiny heads/rankers are trained.
+- Objective is aligned with deployment need (rank functions within a PR).
+
+### Experiment 4.5 — Conway's law / architectural fit (Option 2.5)
 
 Requires: developer ownership data, module-level dependency graph. Predict whether a function
 implementation will require cross-team followups (Conway's law violation signal). Currently
-underspecified; revisit after Exp 4.1 establishes defect-proneness baseline.
+underspecified; revisit after Exp 4.4 establishes stable localization heads.
+
+### Experiment 4.6 — Latent-conditioned decoder (Phase 3 in proposal)
+
+Train a small decoder that takes the student's 4096-dim predicted latent and generates
+function bodies autoregressively. Evaluate with pass@k on unit tests.

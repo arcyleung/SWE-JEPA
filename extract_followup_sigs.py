@@ -240,7 +240,9 @@ def load_anchors() -> list[dict]:
                 AS has_feature,
             MAX(CASE WHEN followup_category = 'bugfix'
                      THEN hunk_overlap_fraction END)
-                AS max_bugfix_overlap
+                AS max_bugfix_overlap,
+            MAX(feature_function_start) AS feature_function_start,
+            MAX(feature_function_end)   AS feature_function_end
         FROM followups_function
         GROUP BY feature_instance_id, feature_repo, feature_file, feature_function
         ORDER BY feature_instance_id, feature_file, feature_function
@@ -250,14 +252,16 @@ def load_anchors() -> list[dict]:
     anchors = []
     for r in rows:
         anchors.append({
-            'feature_instance_id':  r[0],
-            'feature_repo':         r[1],
-            'feature_file':         r[2],
-            'feature_function':     r[3],
-            'has_bugfix':           int(r[4]),
-            'n_bugfix_prs':         int(r[5]),
-            'has_feature':          int(r[6]),
-            'max_bugfix_overlap':   float(r[7]) if r[7] is not None else 0.0,
+            'feature_instance_id':    r[0],
+            'feature_repo':           r[1],
+            'feature_file':           r[2],
+            'feature_function':       r[3],
+            'has_bugfix':             int(r[4]),
+            'n_bugfix_prs':           int(r[5]),
+            'has_feature':            int(r[6]),
+            'max_bugfix_overlap':     float(r[7]) if r[7] is not None else 0.0,
+            'feature_function_start': int(r[8]) if r[8] is not None else None,
+            'feature_function_end':   int(r[9]) if r[9] is not None else None,
         })
     return anchors
 
