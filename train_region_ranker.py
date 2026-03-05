@@ -50,6 +50,12 @@ RESULTS_JSON = os.path.join(os.path.dirname(__file__),
                             'docs', 'phase4_4_se_heads_metrics.json')
 TOPK_JSONL = os.path.join(os.path.dirname(__file__),
                           'docs', 'phase4_4_topk_predictions.jsonl')
+RESULTS_MD_CONWAY = os.path.join(os.path.dirname(__file__),
+                                 'docs', 'phase4_5_conway_localization.md')
+RESULTS_JSON_CONWAY = os.path.join(os.path.dirname(__file__),
+                                   'docs', 'phase4_5_conway_metrics.json')
+TOPK_JSONL_CONWAY = os.path.join(os.path.dirname(__file__),
+                                 'docs', 'phase4_5_topk_predictions.jsonl')
 
 
 def enrich_with_static_props(records: list[dict]) -> tuple[list[dict], dict]:
@@ -108,6 +114,61 @@ def enrich_with_static_props(records: list[dict]) -> tuple[list[dict], dict]:
     print(f"  Enriched cyclomatic_complexity for {n:,}/{total:,} records "
           f"({100*cov:.2f}% coverage)", flush=True)
     return out, {'matched': n, 'total': total, 'coverage': cov}
+
+
+def enrich_with_org_metrics(records: list[dict], org_metrics_file: str) -> tuple[list[dict], dict]:
+    """
+    Attach ownership/interface stress metrics from followup_org_metrics JSONL.
+
+    Keys:
+      (feature_instance_id, feature_file, feature_function)
+    """
+    if not os.path.exists(org_metrics_file):
+        print(f"  Org metrics file missing: {org_metrics_file}; skipping org enrichment", flush=True)
+        return records, {'matched': 0, 'total': len(records), 'coverage': 0.0, 'sources': {}}
+
+    org_map = {}
+    src_counts = {}
+    with open(org_metrics_file) as f:
+        for line in f:
+            r = json.loads(line)
+            key = (r['feature_instance_id'], r['feature_file'], r['feature_function'])
+            org_map[key] = r
+            src = r.get('metric_source', 'unknown')
+            src_counts[src] = src_counts.get(src, 0) + 1
+
+    org_keys = [
+        'commits_touching_file',
+        'distinct_authors',
+        'top_author_fraction',
+        'author_entropy',
+        'ownership_friction',
+        'cochange_weighted_degree',
+        'cochange_unique_neighbors',
+        'cochange_cross_module_ratio',
+        'interface_stress',
+    ]
+    out = []
+    n = 0
+    for rec in records:
+        key = (rec['feature_instance_id'], rec['feature_file'], rec['feature_function'])
+        m = org_map.get(key)
+        row = dict(rec)
+        if m is not None:
+            for k in org_keys:
+                row[k] = float(m.get(k, 0.0))
+            row['metric_source'] = m.get('metric_source', 'unknown')
+            n += 1
+        else:
+            for k in org_keys:
+                row[k] = 0.0
+            row['metric_source'] = 'missing'
+        out.append(row)
+
+    total = len(out)
+    cov = (n / total) if total else 0.0
+    print(f"  Enriched org metrics for {n:,}/{total:,} records ({100*cov:.2f}% coverage)", flush=True)
+    return out, {'matched': n, 'total': total, 'coverage': cov, 'sources': src_counts}
 
 
 def eval_localization(records: list[dict], scores: np.ndarray,
@@ -300,7 +361,9 @@ def write_report(metrics: dict, args, n_records: int, n_repos: int,
                  n_train: int, n_val: int, n_test: int,
                  n_bugfix_pos: int, n_feature_pos: int,
                  k_values: list[int], cc_stats: dict,
-                 feature_names: list[str]) -> None:
+                 feature_names: list[str], out_md: str,
+                 out_json: str, out_topk: str, title: str,
+                 org_stats: dict | None = None) -> None:
     k10 = 10 if 10 in k_values else k_values[-1]
     k_header = ' | '.join(f'R@{k}' for k in k_values)
     k_sep = '|'.join(['-----'] * len(k_values))
@@ -339,7 +402,12 @@ def write_report(metrics: dict, args, n_records: int, n_repos: int,
     delta_bug = (pair_bug.get(k10, 0.0) - teach_bug.get(k10, 0.0)) * 100
     delta_feat = (pair_feat.get(k10, 0.0) - rand_feat.get(k10, 0.0)) * 100
 
-    report = f"""# Experiment 4.4: SE-Head Stack for Region Localization
+    org_line = ""
+    if org_stats is not None:
+        org_line = (f"**Org metrics coverage**: {org_stats.get('matched', 0):,}/"
+                    f"{org_stats.get('total', 0):,} ({100*org_stats.get('coverage', 0.0):.2f}%)\n")
+
+    report = f"""# {title}
 
 **Date**: {datetime.now().strftime('%Y-%m-%d')}
 **Data**: {n_records:,} function anchors, {n_repos} repos
@@ -349,6 +417,7 @@ def write_report(metrics: dict, args, n_records: int, n_repos: int,
 **Models**: {', '.join(args.models)}
 **Seeds**: {args.seeds}
 **Static CC coverage**: {cc_stats.get('matched', 0):,}/{cc_stats.get('total', 0):,} ({100*cc_stats.get('coverage', 0.0):.2f}%)
+{org_line}**Uses org metrics**: {'yes' if args.use_org_metrics else 'no'}
 **SE feature channels**: {', '.join(feature_names)}
 
 ## Reframing summary
@@ -376,12 +445,12 @@ No full-model SFT/RL is used.
 
 ## Artifacts
 
-- `docs/phase4_4_se_heads_metrics.json`
-- `docs/phase4_4_topk_predictions.jsonl`
+- `{os.path.relpath(out_json, os.path.dirname(__file__))}`
+- `{os.path.relpath(out_topk, os.path.dirname(__file__))}`
 """
 
-    os.makedirs(os.path.dirname(RESULTS_MD), exist_ok=True)
-    with open(RESULTS_MD, 'w') as f:
+    os.makedirs(os.path.dirname(out_md), exist_ok=True)
+    with open(out_md, 'w') as f:
         f.write(report)
 
 
@@ -398,6 +467,13 @@ def main():
                     default=['linear', 'fusion', 'mlp', 'pairwise'])
     ap.add_argument('--seeds', type=int, nargs='+', default=[42, 43, 44])
     ap.add_argument('--skip-static-enrich', action='store_true')
+    ap.add_argument('--use-org-metrics', action='store_true',
+                    help='Append Conway-style org metrics as feature channels')
+    ap.add_argument('--org-metrics-file', default=os.path.join(os.path.dirname(__file__),
+                                                               'followup_org_metrics.jsonl'))
+    ap.add_argument('--results-md', default=None)
+    ap.add_argument('--results-json', default=None)
+    ap.add_argument('--topk-jsonl', default=None)
     args = ap.parse_args()
 
     if not args.use_cache:
@@ -413,12 +489,29 @@ def main():
     print('SWE-JEPA Exp 4.4: SE-Head Stack for Region Localization')
     print('=' * 60, flush=True)
 
+    if args.results_md:
+        out_md = args.results_md
+    else:
+        out_md = RESULTS_MD_CONWAY if args.use_org_metrics else RESULTS_MD
+    if args.results_json:
+        out_json = args.results_json
+    else:
+        out_json = RESULTS_JSON_CONWAY if args.use_org_metrics else RESULTS_JSON
+    if args.topk_jsonl:
+        out_topk = args.topk_jsonl
+    else:
+        out_topk = TOPK_JSONL_CONWAY if args.use_org_metrics else TOPK_JSONL
+
     print(f"\nLoading {args.sigs_file} …", flush=True)
     records = load_sigs(args.sigs_file, args.min_overlap)
     cc_stats = {'matched': 0, 'total': len(records), 'coverage': 0.0}
     if not args.skip_static_enrich:
         print('Enriching static properties …', flush=True)
         records, cc_stats = enrich_with_static_props(records)
+    org_stats = {'matched': 0, 'total': len(records), 'coverage': 0.0, 'sources': {}}
+    if args.use_org_metrics:
+        print('Enriching Conway org metrics …', flush=True)
+        records, org_stats = enrich_with_org_metrics(records, args.org_metrics_file)
 
     sig_texts = [r['sig_text'] for r in records]
     repos = [r['feature_repo'] for r in records]
@@ -466,6 +559,18 @@ def main():
     if use_cc:
         feature_names.append('cyclomatic_complexity')
     feature_names.append('churn_proxy')
+    if args.use_org_metrics:
+        feature_names.extend([
+            'org_commits_touching_file',
+            'org_distinct_authors',
+            'org_top_author_fraction',
+            'org_author_entropy',
+            'org_ownership_friction',
+            'org_cochange_weighted_degree',
+            'org_cochange_unique_neighbors',
+            'org_cochange_cross_module_ratio',
+            'org_interface_stress',
+        ])
 
     metrics = {'has_bugfix': {}, 'has_feature': {}}
     score_bank: dict[str, np.ndarray] = {}
@@ -515,6 +620,36 @@ def main():
         if use_cc:
             cols.append(np.log1p(cc))
         cols.append(np.log1p(churn))
+        if args.use_org_metrics:
+            org_commits = np.array([float(r.get('commits_touching_file', 0.0)) for r in records],
+                                   dtype=np.float32)
+            org_authors = np.array([float(r.get('distinct_authors', 0.0)) for r in records],
+                                   dtype=np.float32)
+            org_top_frac = np.array([float(r.get('top_author_fraction', 0.0)) for r in records],
+                                    dtype=np.float32)
+            org_entropy = np.array([float(r.get('author_entropy', 0.0)) for r in records],
+                                   dtype=np.float32)
+            org_friction = np.array([float(r.get('ownership_friction', 0.0)) for r in records],
+                                    dtype=np.float32)
+            org_cc_wdeg = np.array([float(r.get('cochange_weighted_degree', 0.0)) for r in records],
+                                   dtype=np.float32)
+            org_cc_nei = np.array([float(r.get('cochange_unique_neighbors', 0.0)) for r in records],
+                                  dtype=np.float32)
+            org_cc_cross = np.array([float(r.get('cochange_cross_module_ratio', 0.0)) for r in records],
+                                    dtype=np.float32)
+            org_stress = np.array([float(r.get('interface_stress', 0.0)) for r in records],
+                                  dtype=np.float32)
+            cols.extend([
+                np.log1p(org_commits),
+                np.log1p(org_authors),
+                org_top_frac,
+                org_entropy,
+                org_friction,
+                np.log1p(org_cc_wdeg),
+                np.log1p(org_cc_nei),
+                org_cc_cross,
+                org_stress,
+            ])
         X_all = np.column_stack(cols).astype(np.float32)
 
         X_tv = X_all[tv_idx]
@@ -564,7 +699,7 @@ def main():
             vals = '  '.join(f"R@{k}={100*r.get(k, 0):.1f}%" for k in k_values)
             print(f"  {m:10s} {vals}  MRR={100*r.get('mrr', 0):.1f}%", flush=True)
 
-    write_topk(records_test, score_bank, k_values, TOPK_JSONL)
+    write_topk(records_test, score_bank, k_values, out_topk)
 
     payload = {
         'date': datetime.now().strftime('%Y-%m-%d'),
@@ -577,24 +712,29 @@ def main():
             'has_feature_pos': int(has_feature.sum()),
         },
         'cc_stats': cc_stats,
+        'org_stats': org_stats,
         'feature_names': feature_names,
         'metrics': metrics,
     }
 
-    os.makedirs(os.path.dirname(RESULTS_JSON), exist_ok=True)
-    with open(RESULTS_JSON, 'w') as f:
+    os.makedirs(os.path.dirname(out_json), exist_ok=True)
+    with open(out_json, 'w') as f:
         json.dump(payload, f, indent=2)
 
     write_report(metrics, args, n_records, len(set(repos)),
                  len(train_idx), len(val_idx), len(test_idx),
                  int(has_bugfix.sum()), int(has_feature.sum()), k_values,
-                 cc_stats, feature_names)
+                 cc_stats, feature_names, out_md, out_json, out_topk,
+                 title=('Experiment 4.5: Conway Signals for Region Localization'
+                        if args.use_org_metrics else
+                        'Experiment 4.4: SE-Head Stack for Region Localization'),
+                 org_stats=org_stats if args.use_org_metrics else None)
 
     elapsed = (time.time() - t0) / 60.0
     print(f"\nDone in {elapsed:.1f} min")
-    print(f"  Report: {RESULTS_MD}")
-    print(f"  Metrics: {RESULTS_JSON}")
-    print(f"  Top-K: {TOPK_JSONL}")
+    print(f"  Report: {out_md}")
+    print(f"  Metrics: {out_json}")
+    print(f"  Top-K: {out_topk}")
 
 
 if __name__ == '__main__':

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500">
+<rect x="0" y="0" width="900" height="500" fill="white"/>
+<text x="450.0" y="30" text-anchor="middle" font-size="18" font-family="sans-serif">Repos usage growth (sample=200)</text>
+<line x1="70" y1="420" x2="870" y2="420" stroke="#333"/>
+<line x1="70" y1="60" x2="70" y2="420" stroke="#333"/>
+<polyline fill="none" stroke="#1f77b4" stroke-width="2" points="70.0,420.0 230.0,271.6 390.0,124.2 550.0,77.3 710.0,64.2 870.0,60.0"/>
+<circle cx="70.0" cy="420.0" r="5" fill="#1f77b4" /><text x="70.0" y="410.0" text-anchor="middle" font-size="12">2.6499 TiB</text><text x="70.0" y="445.0" text-anchor="middle" font-size="12">before</text><circle cx="230.0" cy="271.6" r="5" fill="#1f77b4" /><text x="230.0" y="261.6" text-anchor="middle" font-size="12">2.6502 TiB</text><text x="230.0" y="445.0" text-anchor="middle" font-size="12">d100</text><circle cx="390.0" cy="124.2" r="5" fill="#1f77b4" /><text x="390.0" y="114.2" text-anchor="middle" font-size="12">2.6505 TiB</text><text x="390.0" y="445.0" text-anchor="middle" font-size="12">d500</text><circle cx="550.0" cy="77.3" r="5" fill="#1f77b4" /><text x="550.0" y="67.3" text-anchor="middle" font-size="12">2.6506 TiB</text><text x="550.0" y="445.0" text-anchor="middle" font-size="12">d1000</text><circle cx="710.0" cy="64.2" r="5" fill="#1f77b4" /><text x="710.0" y="54.2" text-anchor="middle" font-size="12">2.6506 TiB</text><text x="710.0" y="445.0" text-anchor="middle" font-size="12">d2000</text><circle cx="870.0" cy="60.0" r="5" fill="#1f77b4" /><text x="870.0" y="50.0" text-anchor="middle" font-size="12">2.6507 TiB</text><text x="870.0" y="445.0" text-anchor="middle" font-size="12">d5000</text>
+<text x="70" y="50" font-size="12" font-family="sans-serif">bytes scale</text>
+</svg>

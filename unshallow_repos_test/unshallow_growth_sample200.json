@@ -1,0 +1,5271 @@
+{
+  "timestamp_utc": 1772725859,
+  "repos_root": "/shared_workspace_mfs/repos",
+  "sample_size": 200,
+  "seed": 42,
+  "targets": [
+    100,
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "sample_repos": [
+    "/shared_workspace_mfs/repos/561092051__replicate__dreambooth",
+    "/shared_workspace_mfs/repos/143831524__uxlfoundation__scikit-learn-intelex",
+    "/shared_workspace_mfs/repos/107443709__modosc__global-jsdom",
+    "/shared_workspace_mfs/repos/68692129__qgis__qwc2",
+    "/shared_workspace_mfs/repos/2318167828__inklewriter__freeinklewriter",
+    "/shared_workspace_mfs/repos/21339768__reactjs__react-tutorial",
+    "/shared_workspace_mfs/repos/201071164__jenojp__negspacy",
+    "/shared_workspace_mfs/repos/1574428535__facebookincubator__keyframes",
+    "/shared_workspace_mfs/repos/68068967__fogleman__primitive",
+    "/shared_workspace_mfs/repos/140007934__liaan__broadlink_ac_mqtt",
+    "/shared_workspace_mfs/repos/608343239__muppet3000__homeassistant-grott",
+    "/shared_workspace_mfs/repos/685808150__lrstanley__go-ytdlp",
+    "/shared_workspace_mfs/repos/91264719__te-online__timemanager",
+    "/shared_workspace_mfs/repos/4530073433__rocky__python-decompile3",
+    "/shared_workspace_mfs/repos/133101298__adhaamehab__textblob-ar",
+    "/shared_workspace_mfs/repos/503333940__mbrg__power-pwn",
+    "/shared_workspace_mfs/repos/3346928__chjj__tty.js",
+    "/shared_workspace_mfs/repos/110242469__walac__pyusb",
+    "/shared_workspace_mfs/repos/10938894__mikaem__oasis",
+    "/shared_workspace_mfs/repos/136110609__ecshackweek__impedance.py",
+    "/shared_workspace_mfs/repos/198756440__boyter__cs",
+    "/shared_workspace_mfs/repos/206468500__kip-hart__microstructpy",
+    "/shared_workspace_mfs/repos/4110611__mapproxy__mapproxy",
+    "/shared_workspace_mfs/repos/5156526__litewrite__litewrite",
+    "/shared_workspace_mfs/repos/108086514__tusimple__mx-maskrcnn",
+    "/shared_workspace_mfs/repos/471000066__elden1337__hass-peaq",
+    "/shared_workspace_mfs/repos/18814525__crits__crits_services",
+    "/shared_workspace_mfs/repos/6544527__lfpy__lfpy",
+    "/shared_workspace_mfs/repos/57430416__listen1__listen1_chrome_extension",
+    "/shared_workspace_mfs/repos/6360988564__rpgtkoolmv__corescript",
+    "/shared_workspace_mfs/repos/4525013832__quasarframework__app-extension-icon-factory",
+    "/shared_workspace_mfs/repos/332952543__jcrist__msgspec",
+    "/shared_workspace_mfs/repos/199763900__scottbrenner__cfn-lint-action",
+    "/shared_workspace_mfs/repos/358848720__antonlydike__riscemu",
+    "/shared_workspace_mfs/repos/502193049__charmbracelet__gum",
+    "/shared_workspace_mfs/repos/233787675__automl__hpobench",
+    "/shared_workspace_mfs/repos/78039186__scopefoundry__scopefoundry",
+    "/shared_workspace_mfs/repos/87575093__zim-desktop-wiki__zim-desktop-wiki",
+    "/shared_workspace_mfs/repos/101357472__hydrosquall__tiingo-python",
+    "/shared_workspace_mfs/repos/710656936__skateco__skate",
+    "/shared_workspace_mfs/repos/775538884__hotnops__apeman",
+    "/shared_workspace_mfs/repos/16719334__golang__appengine",
+    "/shared_workspace_mfs/repos/631588508__wtfloris__hestia",
+    "/shared_workspace_mfs/repos/33507869__benjaminvanryseghem__numbro",
+    "/shared_workspace_mfs/repos/272690859__dragon-userbot__dragon-userbot",
+    "/shared_workspace_mfs/repos/233561542__lpreterite__vue-tinymce-example",
+    "/shared_workspace_mfs/repos/164900390__fraunhoferportugal__tsfel",
+    "/shared_workspace_mfs/repos/196937459__tophubs__toplist",
+    "/shared_workspace_mfs/repos/seasonedsoftware",
+    "/shared_workspace_mfs/repos/717124565__osbuild__bootc-image-builder",
+    "/shared_workspace_mfs/repos/270246__rmurphey__jqfundamentals",
+    "/shared_workspace_mfs/repos/139830009__flemmerich__pysubgroup",
+    "/shared_workspace_mfs/repos/135715691__rmlio__yarrrml-parser",
+    "/shared_workspace_mfs/repos/302609312__Voyz__ibeam",
+    "/shared_workspace_mfs/repos/137578497__selinuxproject__setools",
+    "/shared_workspace_mfs/repos/28594779__deanishe__alfred-fakeum",
+    "/shared_workspace_mfs/repos/8379209806__bokuweb__react-motion-menu",
+    "/shared_workspace_mfs/repos/274861986__adapt-python__adapt",
+    "/shared_workspace_mfs/repos/517190864__titaniumnetwork-dev__ultraviolet",
+    "/shared_workspace_mfs/repos/22554796__arashm__jdate",
+    "/shared_workspace_mfs/repos/777111718__Cinnamon__kotaemon",
+    "/shared_workspace_mfs/repos/114788369__cloudflare__templates",
+    "/shared_workspace_mfs/repos/67243113__azuread__microsoft-authentication-library-for-python",
+    "/shared_workspace_mfs/repos/367301387__alexshkarin__pylablib",
+    "/shared_workspace_mfs/repos/442874399__mystenlabs__mysten-infra",
+    "/shared_workspace_mfs/repos/150129388__foniod__redbpf",
+    "/shared_workspace_mfs/repos/964488506_SkyworkAI_Skywork-OR1",
+    "/shared_workspace_mfs/repos/30149358__regebro__supporting-python-3",
+    "/shared_workspace_mfs/repos/12959597__yiidoc__yii2-redactor",
+    "/shared_workspace_mfs/repos/46094422__sharadmv__deepx",
+    "/shared_workspace_mfs/repos/242499609__maidsafe__bls_dkg",
+    "/shared_workspace_mfs/repos/809060646__muzishen__IMAGDressing",
+    "/shared_workspace_mfs/repos/546752231__Farama-Foundation__Minari",
+    "/shared_workspace_mfs/repos/53438969__globus__globus-cli",
+    "/shared_workspace_mfs/repos/902759548__iterorganization__imas-python",
+    "/shared_workspace_mfs/repos/86238422__tufin__pytos",
+    "/shared_workspace_mfs/repos/288096097__aliev__aioauth",
+    "/shared_workspace_mfs/repos/489357827__open-feature__python-sdk",
+    "/shared_workspace_mfs/repos/184619482__larq__zoo",
+    "/shared_workspace_mfs/repos/639558708__d2foundry__oracle_engine",
+    "/shared_workspace_mfs/repos/125721832__hikhvar__mqtt2prometheus",
+    "/shared_workspace_mfs/repos/115798843__itsubaki__q",
+    "/shared_workspace_mfs/repos/591099659__microsoft__codamosa",
+    "/shared_workspace_mfs/repos/20350058__reignite__burnout.io",
+    "/shared_workspace_mfs/repos/73024951__astropy__sphinx-automodapi",
+    "/shared_workspace_mfs/repos/240317939__hugomrdias__playwright-test",
+    "/shared_workspace_mfs/repos/130027269__amadeusitgroup__redis-operator",
+    "/shared_workspace_mfs/repos/849953736__orbital-materials__orb-models",
+    "/shared_workspace_mfs/repos/206581466__izneo-get__izneo-get",
+    "/shared_workspace_mfs/repos/870976364__openreasoner__openr",
+    "/shared_workspace_mfs/repos/139229009__sth2018__fastwordquery",
+    "/shared_workspace_mfs/repos/302749270__canop__dysk",
+    "/shared_workspace_mfs/repos/23362024__granze__react-starterify",
+    "/shared_workspace_mfs/repos/36242853__bjodah__chempy",
+    "/shared_workspace_mfs/repos/555606448__christiansandberg__canopen",
+    "/shared_workspace_mfs/repos/81609715__awalterschulze__goderive",
+    "/shared_workspace_mfs/repos/290094833__fastaudio__fastaudio",
+    "/shared_workspace_mfs/repos/168676565__jziolkowski__tdm",
+    "/shared_workspace_mfs/repos/294083365__drogue-iot__drogue-cloud",
+    "/shared_workspace_mfs/repos/282803381__tesselode__kira",
+    "/shared_workspace_mfs/repos/19361153__tdryer__hangups",
+    "/shared_workspace_mfs/repos/60068819__LifeActor__ykdl",
+    "/shared_workspace_mfs/repos/226832620__argoproj-labs__argocd-notifications",
+    "/shared_workspace_mfs/repos/636446382__Synphonyte__leptos-struct-table",
+    "/shared_workspace_mfs/repos/99020025__oasis-open__cti-taxii-server",
+    "/shared_workspace_mfs/repos/61588840__henrygd__bigpicture",
+    "/shared_workspace_mfs/repos/571926051__graspnet__anygrasp_sdk",
+    "/shared_workspace_mfs/repos/126448237__DevExpress__devextreme-vue",
+    "/shared_workspace_mfs/repos/52364316__carbonblack__cbapi-python",
+    "/shared_workspace_mfs/repos/554730081__logos-co__overwatch",
+    "/shared_workspace_mfs/repos/173351817__mitre-attack__attack-scripts",
+    "/shared_workspace_mfs/repos/440826__mleibman__slickgrid",
+    "/shared_workspace_mfs/repos/671675593__shopify__theme-tools",
+    "/shared_workspace_mfs/repos/213308003__bluejekyll__foundationdb-rs",
+    "/shared_workspace_mfs/repos/169021396__wokket__rust-hl7",
+    "/shared_workspace_mfs/repos/36932809__tideland__golib",
+    "/shared_workspace_mfs/repos/302284973__wenjianzhang__go-admin",
+    "/shared_workspace_mfs/repos/228394097__papacarp__pooltool.io",
+    "/shared_workspace_mfs/repos/96932974__gammazero__nexus",
+    "/shared_workspace_mfs/repos/56178599__dmort27__epitran",
+    "/shared_workspace_mfs/repos/620517607__blitzarx1__egui_graphs",
+    "/shared_workspace_mfs/repos/466513703__kornia__kornia-rs",
+    "/shared_workspace_mfs/repos/1993032712__zagortenay333__timepp__gnome",
+    "/shared_workspace_mfs/repos/617067663__selefra__selefra",
+    "/shared_workspace_mfs/repos/261263035__atenreiro__opensquat",
+    "/shared_workspace_mfs/repos/829989857__vetdatahub__vetdatahub_website",
+    "/shared_workspace_mfs/repos/724439782__intellabs__hpat",
+    "/shared_workspace_mfs/repos/73422616__cytomining__deepprofiler",
+    "/shared_workspace_mfs/repos/120190957__vkuznecovas__mouthful",
+    "/shared_workspace_mfs/repos/204343221__move-coop__parsons",
+    "/shared_workspace_mfs/repos/798260577__kosasih__pi-nexus-autonomous-banking-network",
+    "/shared_workspace_mfs/repos/110320121__jgodson__shopify-script-creator",
+    "/shared_workspace_mfs/repos/774546545__RustForWeb__radix",
+    "/shared_workspace_mfs/repos/25528021__simov__grant",
+    "/shared_workspace_mfs/repos/31986253__GuillaumeGomez__sysinfo",
+    "/shared_workspace_mfs/repos/227205768__zeronetx__zeronet",
+    "/shared_workspace_mfs/repos/12419919__dotledger__dotledger",
+    "/shared_workspace_mfs/repos/1943878044__danbot-hosting__danbothostingstats",
+    "/shared_workspace_mfs/repos/9489978__jquast__telnetlib3",
+    "/shared_workspace_mfs/repos/appcelerator",
+    "/shared_workspace_mfs/repos/47771861__ivark__ivark.github.io",
+    "/shared_workspace_mfs/repos/88814110__mozilla__lightbeam-we",
+    "/shared_workspace_mfs/repos/657267150_robfiras_loco-mujoco",
+    "/shared_workspace_mfs/repos/254864913__continvvm__continuum",
+    "/shared_workspace_mfs/repos/1953786763__eleutherai__pyfra",
+    "/shared_workspace_mfs/repos/5830987__hapijs__joi",
+    "/shared_workspace_mfs/repos/40443424__daniellandau__switcher",
+    "/shared_workspace_mfs/repos/31554492__ceph__cbt",
+    "/shared_workspace_mfs/repos/90175281__overtools__io_scene_owm",
+    "/shared_workspace_mfs/repos/95140462__chaquo__chaquopy",
+    "/shared_workspace_mfs/repos/5655324598__rust-osdev__xhci",
+    "/shared_workspace_mfs/repos/366936468__googlecloudplatform__elcarro-oracle-operator",
+    "/shared_workspace_mfs/repos/158754800__Neoteroi__BlackSheep",
+    "/shared_workspace_mfs/repos/225692183__ciehanski__libgen-cli",
+    "/shared_workspace_mfs/repos/157452080__aws__aws-iot-device-sdk-python-v2",
+    "/shared_workspace_mfs/repos/214691457__offchainlabs__arbitrum-orbit-sdk",
+    "/shared_workspace_mfs/repos/691238354__pimlicolabs__permissionless.js",
+    "/shared_workspace_mfs/repos/471176429__nwg-piotr__nwg-look",
+    "/shared_workspace_mfs/repos/44561719__openaps__oref0",
+    "/shared_workspace_mfs/repos/22457420__dckc__rust-sqlite3",
+    "/shared_workspace_mfs/repos/694314374__librasn__compiler",
+    "/shared_workspace_mfs/repos/49749488__platformio__platformio-atom-ide",
+    "/shared_workspace_mfs/repos/339124227__fsaris__home-assistant-zonneplan-one",
+    "/shared_workspace_mfs/repos/922051092__hkust-nlp__simpleRL-reason",
+    "/shared_workspace_mfs/repos/496002163__rampasek__graphgps",
+    "/shared_workspace_mfs/repos/3182350__amoffat__sh",
+    "/shared_workspace_mfs/repos/288219428__marcosrg9__youtubetv",
+    "/shared_workspace_mfs/repos/199090254__kundajelab__bpnet",
+    "/shared_workspace_mfs/repos/156880654__jsubelj__g910-gkey-macro-support",
+    "/shared_workspace_mfs/repos/4156651__tomerfiliba__plumbum",
+    "/shared_workspace_mfs/repos/39879019__hyperhq__runv",
+    "/shared_workspace_mfs/repos/1347801__marcydoty__recursos-nfe-em-python",
+    "/shared_workspace_mfs/repos/7064308__jisaacks__gitgutter",
+    "/shared_workspace_mfs/repos/116447660__attzonko__mmpy_bot",
+    "/shared_workspace_mfs/repos/86109099__humenda__isolang-rs",
+    "/shared_workspace_mfs/repos/143047851__amzn__mxfusion",
+    "/shared_workspace_mfs/repos/163555743__nautilus__gateway",
+    "/shared_workspace_mfs/repos/54489372__snagles__docker-registry-manager",
+    "/shared_workspace_mfs/repos/16733466_guelfoweb_knock",
+    "/shared_workspace_mfs/repos/756096262_NVIDIA-NeMo_Skills",
+    "/shared_workspace_mfs/repos/612023577__absadiki__pywhispercpp",
+    "/shared_workspace_mfs/repos/334775686__quantconnect__lean-cli",
+    "/shared_workspace_mfs/repos/509847025__hekmon__linkytic",
+    "/shared_workspace_mfs/repos/12303509__abritinthebay__datejs",
+    "/shared_workspace_mfs/repos/30657435__mechmotum__cyipopt",
+    "/shared_workspace_mfs/repos/304150952__lenscas__tealr",
+    "/shared_workspace_mfs/repos/509095053__postech-dao__simperby",
+    "/shared_workspace_mfs/repos/374629205__peterhinch__micropython-micro-gui",
+    "/shared_workspace_mfs/repos/436395377__benchkram__bob",
+    "/shared_workspace_mfs/repos/217595262__burningalchemist__sql_exporter",
+    "/shared_workspace_mfs/repos/46218363__nnseva__django-jsoneditor",
+    "/shared_workspace_mfs/repos/86060799__pypyr__pypyr",
+    "/shared_workspace_mfs/repos/alist-org",
+    "/shared_workspace_mfs/repos/1028426335__sepehr-rs__sudoku",
+    "/shared_workspace_mfs/repos/611717422__BAI-Yeqi__OpenPCSeg",
+    "/shared_workspace_mfs/repos/660804542__phalcode__gamevault-backend",
+    "/shared_workspace_mfs/repos/145297532__lovvskillz__python-discord-webhook",
+    "/shared_workspace_mfs/repos/61382239__spirit__spirit",
+    "/shared_workspace_mfs/repos/901887226__OpenZeppelin__stellar-contracts",
+    "/shared_workspace_mfs/repos/44344606__go-chi__chi"
+  ],
+  "stages": {
+    "before": {
+      "bytes": 2913589370880,
+      "tib": 2.649894095957279,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385512 |                    - |       - |                    - |       - |\n length   |        1672695884807 |                    - |       - |                    - |       - |\n size     |        2913589370880 |                    - |       - |                    - |       - |\n realsize |        2913589370880 |                    - |       - |                    - |       - |\n"
+    },
+    "d100": {
+      "bytes": 2913933713408,
+      "tib": 2.6502072736620903,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21386798 |                    - |       - |                    - |       - |\n length   |        1672969229430 |                    - |       - |                    - |       - |\n size     |        2913933713408 |                    - |       - |                    - |       - |\n realsize |        2913933713408 |                    - |       - |                    - |       - |\n"
+    },
+    "d500": {
+      "bytes": 2914275876864,
+      "tib": 2.6505184695124626,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21388375 |                    - |       - |                    - |       - |\n length   |        1673242063735 |                    - |       - |                    - |       - |\n size     |        2914275876864 |                    - |       - |                    - |       - |\n realsize |        2914275876864 |                    - |       - |                    - |       - |\n"
+    },
+    "d1000": {
+      "bytes": 2914384715776,
+      "tib": 2.6506174579262733,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21388511 |                    - |       - |                    - |       - |\n length   |        1673344324937 |                    - |       - |                    - |       - |\n size     |        2914384715776 |                    - |       - |                    - |       - |\n realsize |        2914384715776 |                    - |       - |                    - |       - |\n"
+    },
+    "d2000": {
+      "bytes": 2914414960640,
+      "tib": 2.650644965469837,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21388539 |                    - |       - |                    - |       - |\n length   |        1673373584692 |                    - |       - |                    - |       - |\n size     |        2914414960640 |                    - |       - |                    - |       - |\n realsize |        2914414960640 |                    - |       - |                    - |       - |\n"
+    },
+    "d5000": {
+      "bytes": 2914424774656,
+      "tib": 2.6506538912653923,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21388545 |                    - |       - |                    - |       - |\n length   |        1673383213371 |                    - |       - |                    - |       - |\n size     |        2914424774656 |                    - |       - |                    - |       - |\n realsize |        2914424774656 |                    - |       - |                    - |       - |\n"
+    }
+  },
+  "delta_bytes": {
+    "before_to_d100": 344342528,
+    "before_to_d500": 686505984,
+    "before_to_d1000": 795344896,
+    "before_to_d2000": 825589760,
+    "before_to_d5000": 835403776,
+    "d100_to_d500": 342163456,
+    "d500_to_d1000": 108838912,
+    "d1000_to_d2000": 30244864,
+    "d2000_to_d5000": 9814016
+  },
+  "deepen_results": {
+    "d100": [
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471000066__elden1337__hass-peaq",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "108086514__tusimple__mx-maskrcnn",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "206468500__kip-hart__microstructpy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "57430416__listen1__listen1_chrome_extension",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4110611__mapproxy__mapproxy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "332952543__jcrist__msgspec",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "18814525__crits__crits_services",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "6360988564__rpgtkoolmv__corescript",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4525013832__quasarframework__app-extension-icon-factory",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5156526__litewrite__litewrite",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "78039186__scopefoundry__scopefoundry",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "502193049__charmbracelet__gum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "358848720__antonlydike__riscemu",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "6544527__lfpy__lfpy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "199763900__scottbrenner__cfn-lint-action",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "233787675__automl__hpobench",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "198756440__boyter__cs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "16719334__golang__appengine",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "631588508__wtfloris__hestia",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "710656936__skateco__skate",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "164900390__fraunhoferportugal__tsfel",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "233561542__lpreterite__vue-tinymce-example",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "272690859__dragon-userbot__dragon-userbot",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "196937459__tophubs__toplist",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "775538884__hotnops__apeman",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "33507869__benjaminvanryseghem__numbro",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "717124565__osbuild__bootc-image-builder",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "87575093__zim-desktop-wiki__zim-desktop-wiki",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "302609312__Voyz__ibeam",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "seasonedsoftware",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "139830009__flemmerich__pysubgroup",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "135715691__rmlio__yarrrml-parser",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "270246__rmurphey__jqfundamentals",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "101357472__hydrosquall__tiingo-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "274861986__adapt-python__adapt",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "517190864__titaniumnetwork-dev__ultraviolet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "8379209806__bokuweb__react-motion-menu",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "442874399__mystenlabs__mysten-infra",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "67243113__azuread__microsoft-authentication-library-for-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "137578497__selinuxproject__setools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "367301387__alexshkarin__pylablib",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "28594779__deanishe__alfred-fakeum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "964488506_SkyworkAI_Skywork-OR1",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "46094422__sharadmv__deepx",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "242499609__maidsafe__bls_dkg",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "114788369__cloudflare__templates",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "22554796__arashm__jdate",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "777111718__Cinnamon__kotaemon",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "12959597__yiidoc__yii2-redactor",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "30149358__regebro__supporting-python-3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "546752231__Farama-Foundation__Minari",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "184619482__larq__zoo",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86238422__tufin__pytos",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "115798843__itsubaki__q",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "639558708__d2foundry__oracle_engine",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "125721832__hikhvar__mqtt2prometheus",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "489357827__open-feature__python-sdk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "902759548__iterorganization__imas-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "809060646__muzishen__IMAGDressing",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "53438969__globus__globus-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "20350058__reignite__burnout.io",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "591099659__microsoft__codamosa",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "73024951__astropy__sphinx-automodapi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "130027269__amadeusitgroup__redis-operator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "849953736__orbital-materials__orb-models",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "288096097__aliev__aioauth",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "206581466__izneo-get__izneo-get",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "139229009__sth2018__fastwordquery",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "870976364__openreasoner__openr",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "240317939__hugomrdias__playwright-test",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "302749270__canop__dysk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "23362024__granze__react-starterify",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "36242853__bjodah__chempy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "555606448__christiansandberg__canopen",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "282803381__tesselode__kira",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "168676565__jziolkowski__tdm",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "294083365__drogue-iot__drogue-cloud",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "81609715__awalterschulze__goderive",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "226832620__argoproj-labs__argocd-notifications",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "19361153__tdryer__hangups",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "636446382__Synphonyte__leptos-struct-table",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "60068819__LifeActor__ykdl",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "99020025__oasis-open__cti-taxii-server",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "290094833__fastaudio__fastaudio",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "61588840__henrygd__bigpicture",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "213308003__bluejekyll__foundationdb-rs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "150129388__foniod__redbpf",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "169021396__wokket__rust-hl7",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "36932809__tideland__golib",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "554730081__logos-co__overwatch",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "173351817__mitre-attack__attack-scripts",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "440826__mleibman__slickgrid",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "52364316__carbonblack__cbapi-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "228394097__papacarp__pooltool.io",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "571926051__graspnet__anygrasp_sdk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "671675593__shopify__theme-tools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "617067663__selefra__selefra",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "96932974__gammazero__nexus",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "261263035__atenreiro__opensquat",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "56178599__dmort27__epitran",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "73422616__cytomining__deepprofiler",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "829989857__vetdatahub__vetdatahub_website",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "466513703__kornia__kornia-rs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "620517607__blitzarx1__egui_graphs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "120190957__vkuznecovas__mouthful",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "302284973__wenjianzhang__go-admin",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "798260577__kosasih__pi-nexus-autonomous-banking-network",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "724439782__intellabs__hpat",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "774546545__RustForWeb__radix",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1993032712__zagortenay333__timepp__gnome",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "110320121__jgodson__shopify-script-creator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "227205768__zeronetx__zeronet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1943878044__danbot-hosting__danbothostingstats",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "31986253__GuillaumeGomez__sysinfo",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "12419919__dotledger__dotledger",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "25528021__simov__grant",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1953786763__eleutherai__pyfra",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "657267150_robfiras_loco-mujoco",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "9489978__jquast__telnetlib3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "254864913__continvvm__continuum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "88814110__mozilla__lightbeam-we",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "appcelerator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "40443424__daniellandau__switcher",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "31554492__ceph__cbt",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5830987__hapijs__joi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "47771861__ivark__ivark.github.io",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "204343221__move-coop__parsons",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5655324598__rust-osdev__xhci",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "366936468__googlecloudplatform__elcarro-oracle-operator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "90175281__overtools__io_scene_owm",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "471176429__nwg-piotr__nwg-look",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "95140462__chaquo__chaquopy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "22457420__dckc__rust-sqlite3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "214691457__offchainlabs__arbitrum-orbit-sdk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "691238354__pimlicolabs__permissionless.js",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "157452080__aws__aws-iot-device-sdk-python-v2",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "49749488__platformio__platformio-atom-ide",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "339124227__fsaris__home-assistant-zonneplan-one",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "44561719__openaps__oref0",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "922051092__hkust-nlp__simpleRL-reason",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "694314374__librasn__compiler",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "158754800__Neoteroi__BlackSheep",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "3182350__amoffat__sh",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "199090254__kundajelab__bpnet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "156880654__jsubelj__g910-gkey-macro-support",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "7064308__jisaacks__gitgutter",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4156651__tomerfiliba__plumbum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1347801__marcydoty__recursos-nfe-em-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "288219428__marcosrg9__youtubetv",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "496002163__rampasek__graphgps",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "39879019__hyperhq__runv",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "163555743__nautilus__gateway",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "612023577__absadiki__pywhispercpp",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86109099__humenda__isolang-rs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "116447660__attzonko__mmpy_bot",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "334775686__quantconnect__lean-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "16733466_guelfoweb_knock",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "143047851__amzn__mxfusion",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "756096262_NVIDIA-NeMo_Skills",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "54489372__snagles__docker-registry-manager",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "225692183__ciehanski__libgen-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "12303509__abritinthebay__datejs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509095053__postech-dao__simperby",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "304150952__lenscas__tealr",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509847025__hekmon__linkytic",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "374629205__peterhinch__micropython-micro-gui",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "217595262__burningalchemist__sql_exporter",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "436395377__benchkram__bob",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86060799__pypyr__pypyr",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "30657435__mechmotum__cyipopt",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "46218363__nnseva__django-jsoneditor",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "611717422__BAI-Yeqi__OpenPCSeg",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1028426335__sepehr-rs__sudoku",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "145297532__lovvskillz__python-discord-webhook",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "44344606__go-chi__chi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "alist-org",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "901887226__OpenZeppelin__stellar-contracts",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "61382239__spirit__spirit",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "660804542__phalcode__gamevault-backend",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "126448237__DevExpress__devextreme-vue",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d500": [
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "108086514__tusimple__mx-maskrcnn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6360988564__rpgtkoolmv__corescript",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "18814525__crits__crits_services",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "206468500__kip-hart__microstructpy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "233787675__automl__hpobench",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4525013832__quasarframework__app-extension-icon-factory",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "471000066__elden1337__hass-peaq",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "358848720__antonlydike__riscemu",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5156526__litewrite__litewrite",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "198756440__boyter__cs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "57430416__listen1__listen1_chrome_extension",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "6544527__lfpy__lfpy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "199763900__scottbrenner__cfn-lint-action",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "332952543__jcrist__msgspec",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "233561542__lpreterite__vue-tinymce-example",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "164900390__fraunhoferportugal__tsfel",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "196937459__tophubs__toplist",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "502193049__charmbracelet__gum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "631588508__wtfloris__hestia",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "78039186__scopefoundry__scopefoundry",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "139830009__flemmerich__pysubgroup",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "775538884__hotnops__apeman",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4110611__mapproxy__mapproxy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "16719334__golang__appengine",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "28594779__deanishe__alfred-fakeum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "8379209806__bokuweb__react-motion-menu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "101357472__hydrosquall__tiingo-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "710656936__skateco__skate",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "22554796__arashm__jdate",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "272690859__dragon-userbot__dragon-userbot",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "33507869__benjaminvanryseghem__numbro",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "717124565__osbuild__bootc-image-builder",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "302609312__Voyz__ibeam",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "274861986__adapt-python__adapt",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "517190864__titaniumnetwork-dev__ultraviolet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "964488506_SkyworkAI_Skywork-OR1",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30149358__regebro__supporting-python-3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12959597__yiidoc__yii2-redactor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "135715691__rmlio__yarrrml-parser",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "seasonedsoftware",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "270246__rmurphey__jqfundamentals",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "777111718__Cinnamon__kotaemon",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "137578497__selinuxproject__setools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "442874399__mystenlabs__mysten-infra",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "242499609__maidsafe__bls_dkg",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "46094422__sharadmv__deepx",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "809060646__muzishen__IMAGDressing",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "67243113__azuread__microsoft-authentication-library-for-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "114788369__cloudflare__templates",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "546752231__Farama-Foundation__Minari",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "150129388__foniod__redbpf",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86238422__tufin__pytos",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "367301387__alexshkarin__pylablib",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "53438969__globus__globus-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "125721832__hikhvar__mqtt2prometheus",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "130027269__amadeusitgroup__redis-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "849953736__orbital-materials__orb-models",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "115798843__itsubaki__q",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "639558708__d2foundry__oracle_engine",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "489357827__open-feature__python-sdk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "184619482__larq__zoo",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "902759548__iterorganization__imas-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "20350058__reignite__burnout.io",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "73024951__astropy__sphinx-automodapi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "591099659__microsoft__codamosa",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "290094833__fastaudio__fastaudio",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206581466__izneo-get__izneo-get",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "240317939__hugomrdias__playwright-test",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "23362024__granze__react-starterify",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "288096097__aliev__aioauth",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "139229009__sth2018__fastwordquery",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "302749270__canop__dysk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "870976364__openreasoner__openr",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "81609715__awalterschulze__goderive",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "61588840__henrygd__bigpicture",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36242853__bjodah__chempy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "571926051__graspnet__anygrasp_sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "168676565__jziolkowski__tdm",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "554730081__logos-co__overwatch",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "173351817__mitre-attack__attack-scripts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "555606448__christiansandberg__canopen",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "282803381__tesselode__kira",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "294083365__drogue-iot__drogue-cloud",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "169021396__wokket__rust-hl7",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "87575093__zim-desktop-wiki__zim-desktop-wiki",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "226832620__argoproj-labs__argocd-notifications",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "228394097__papacarp__pooltool.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "60068819__LifeActor__ykdl",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "636446382__Synphonyte__leptos-struct-table",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "19361153__tdryer__hangups",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "99020025__oasis-open__cti-taxii-server",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "440826__mleibman__slickgrid",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "617067663__selefra__selefra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "213308003__bluejekyll__foundationdb-rs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "829989857__vetdatahub__vetdatahub_website",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36932809__tideland__golib",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "302284973__wenjianzhang__go-admin",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "96932974__gammazero__nexus",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "52364316__carbonblack__cbapi-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "466513703__kornia__kornia-rs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1993032712__zagortenay333__timepp__gnome",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "620517607__blitzarx1__egui_graphs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "671675593__shopify__theme-tools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "261263035__atenreiro__opensquat",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "73422616__cytomining__deepprofiler",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "798260577__kosasih__pi-nexus-autonomous-banking-network",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "110320121__jgodson__shopify-script-creator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "724439782__intellabs__hpat",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "56178599__dmort27__epitran",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "25528021__simov__grant",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "126448237__DevExpress__devextreme-vue",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "204343221__move-coop__parsons",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "12419919__dotledger__dotledger",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "120190957__vkuznecovas__mouthful",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "774546545__RustForWeb__radix",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "31986253__GuillaumeGomez__sysinfo",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1943878044__danbot-hosting__danbothostingstats",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "227205768__zeronetx__zeronet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "88814110__mozilla__lightbeam-we",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "254864913__continvvm__continuum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "9489978__jquast__telnetlib3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1953786763__eleutherai__pyfra",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "225692183__ciehanski__libgen-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "40443424__daniellandau__switcher",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "90175281__overtools__io_scene_owm",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "31554492__ceph__cbt",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "appcelerator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "95140462__chaquo__chaquopy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5655324598__rust-osdev__xhci",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "214691457__offchainlabs__arbitrum-orbit-sdk",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "366936468__googlecloudplatform__elcarro-oracle-operator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5830987__hapijs__joi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "922051092__hkust-nlp__simpleRL-reason",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "496002163__rampasek__graphgps",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "657267150_robfiras_loco-mujoco",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "288219428__marcosrg9__youtubetv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "158754800__Neoteroi__BlackSheep",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "156880654__jsubelj__g910-gkey-macro-support",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471176429__nwg-piotr__nwg-look",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "22457420__dckc__rust-sqlite3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1347801__marcydoty__recursos-nfe-em-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "47771861__ivark__ivark.github.io",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "49749488__platformio__platformio-atom-ide",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "44561719__openaps__oref0",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "143047851__amzn__mxfusion",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "157452080__aws__aws-iot-device-sdk-python-v2",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "54489372__snagles__docker-registry-manager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16733466_guelfoweb_knock",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "339124227__fsaris__home-assistant-zonneplan-one",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "691238354__pimlicolabs__permissionless.js",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "3182350__amoffat__sh",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "694314374__librasn__compiler",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "7064308__jisaacks__gitgutter",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "199090254__kundajelab__bpnet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4156651__tomerfiliba__plumbum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86109099__humenda__isolang-rs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "612023577__absadiki__pywhispercpp",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "163555743__nautilus__gateway",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509847025__hekmon__linkytic",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "46218363__nnseva__django-jsoneditor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "116447660__attzonko__mmpy_bot",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "304150952__lenscas__tealr",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "39879019__hyperhq__runv",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "611717422__BAI-Yeqi__OpenPCSeg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "334775686__quantconnect__lean-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509095053__postech-dao__simperby",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "436395377__benchkram__bob",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "30657435__mechmotum__cyipopt",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "217595262__burningalchemist__sql_exporter",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1028426335__sepehr-rs__sudoku",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "374629205__peterhinch__micropython-micro-gui",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86060799__pypyr__pypyr",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "12303509__abritinthebay__datejs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "145297532__lovvskillz__python-discord-webhook",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "61382239__spirit__spirit",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "756096262_NVIDIA-NeMo_Skills",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "660804542__phalcode__gamevault-backend",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "alist-org",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "44344606__go-chi__chi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "901887226__OpenZeppelin__stellar-contracts",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d1000": [
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206468500__kip-hart__microstructpy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "108086514__tusimple__mx-maskrcnn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "5156526__litewrite__litewrite",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "18814525__crits__crits_services",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6544527__lfpy__lfpy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6360988564__rpgtkoolmv__corescript",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4525013832__quasarframework__app-extension-icon-factory",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "358848720__antonlydike__riscemu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "78039186__scopefoundry__scopefoundry",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "233787675__automl__hpobench",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "101357472__hydrosquall__tiingo-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16719334__golang__appengine",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "775538884__hotnops__apeman",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "631588508__wtfloris__hestia",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "33507869__benjaminvanryseghem__numbro",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "233561542__lpreterite__vue-tinymce-example",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "164900390__fraunhoferportugal__tsfel",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "196937459__tophubs__toplist",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "seasonedsoftware",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "270246__rmurphey__jqfundamentals",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "139830009__flemmerich__pysubgroup",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "135715691__rmlio__yarrrml-parser",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302609312__Voyz__ibeam",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "710656936__skateco__skate",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "28594779__deanishe__alfred-fakeum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "8379209806__bokuweb__react-motion-menu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "274861986__adapt-python__adapt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "517190864__titaniumnetwork-dev__ultraviolet",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "22554796__arashm__jdate",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "777111718__Cinnamon__kotaemon",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "502193049__charmbracelet__gum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "67243113__azuread__microsoft-authentication-library-for-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "367301387__alexshkarin__pylablib",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "442874399__mystenlabs__mysten-infra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "150129388__foniod__redbpf",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "964488506_SkyworkAI_Skywork-OR1",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30149358__regebro__supporting-python-3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12959597__yiidoc__yii2-redactor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "46094422__sharadmv__deepx",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471000066__elden1337__hass-peaq",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "242499609__maidsafe__bls_dkg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "809060646__muzishen__IMAGDressing",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "546752231__Farama-Foundation__Minari",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "57430416__listen1__listen1_chrome_extension",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "86238422__tufin__pytos",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "288096097__aliev__aioauth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "489357827__open-feature__python-sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "184619482__larq__zoo",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "639558708__d2foundry__oracle_engine",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "125721832__hikhvar__mqtt2prometheus",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "198756440__boyter__cs",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "272690859__dragon-userbot__dragon-userbot",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "717124565__osbuild__bootc-image-builder",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "20350058__reignite__burnout.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "73024951__astropy__sphinx-automodapi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "240317939__hugomrdias__playwright-test",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "130027269__amadeusitgroup__redis-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "849953736__orbital-materials__orb-models",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206581466__izneo-get__izneo-get",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "870976364__openreasoner__openr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "139229009__sth2018__fastwordquery",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302749270__canop__dysk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36242853__bjodah__chempy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "23362024__granze__react-starterify",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "555606448__christiansandberg__canopen",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "81609715__awalterschulze__goderive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "290094833__fastaudio__fastaudio",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "168676565__jziolkowski__tdm",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "199763900__scottbrenner__cfn-lint-action",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "137578497__selinuxproject__setools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "114788369__cloudflare__templates",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "226832620__argoproj-labs__argocd-notifications",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "636446382__Synphonyte__leptos-struct-table",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "99020025__oasis-open__cti-taxii-server",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "61588840__henrygd__bigpicture",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "571926051__graspnet__anygrasp_sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "126448237__DevExpress__devextreme-vue",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "52364316__carbonblack__cbapi-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "554730081__logos-co__overwatch",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "173351817__mitre-attack__attack-scripts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "440826__mleibman__slickgrid",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "332952543__jcrist__msgspec",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "213308003__bluejekyll__foundationdb-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "169021396__wokket__rust-hl7",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36932809__tideland__golib",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302284973__wenjianzhang__go-admin",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "228394097__papacarp__pooltool.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "96932974__gammazero__nexus",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "591099659__microsoft__codamosa",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "620517607__blitzarx1__egui_graphs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "466513703__kornia__kornia-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "115798843__itsubaki__q",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "617067663__selefra__selefra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "261263035__atenreiro__opensquat",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "829989857__vetdatahub__vetdatahub_website",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "19361153__tdryer__hangups",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "73422616__cytomining__deepprofiler",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "120190957__vkuznecovas__mouthful",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "902759548__iterorganization__imas-python",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4110611__mapproxy__mapproxy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "110320121__jgodson__shopify-script-creator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "282803381__tesselode__kira",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "294083365__drogue-iot__drogue-cloud",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "53438969__globus__globus-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "56178599__dmort27__epitran",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "60068819__LifeActor__ykdl",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "671675593__shopify__theme-tools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "9489978__jquast__telnetlib3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1993032712__zagortenay333__timepp__gnome",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "47771861__ivark__ivark.github.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "88814110__mozilla__lightbeam-we",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "657267150_robfiras_loco-mujoco",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "254864913__continvvm__continuum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1953786763__eleutherai__pyfra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "25528021__simov__grant",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "40443424__daniellandau__switcher",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "31554492__ceph__cbt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "90175281__overtools__io_scene_owm",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "774546545__RustForWeb__radix",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5655324598__rust-osdev__xhci",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "366936468__googlecloudplatform__elcarro-oracle-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "158754800__Neoteroi__BlackSheep",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "225692183__ciehanski__libgen-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "157452080__aws__aws-iot-device-sdk-python-v2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "214691457__offchainlabs__arbitrum-orbit-sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "691238354__pimlicolabs__permissionless.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471176429__nwg-piotr__nwg-look",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12419919__dotledger__dotledger",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "22457420__dckc__rust-sqlite3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "694314374__librasn__compiler",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "49749488__platformio__platformio-atom-ide",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "339124227__fsaris__home-assistant-zonneplan-one",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "922051092__hkust-nlp__simpleRL-reason",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "496002163__rampasek__graphgps",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3182350__amoffat__sh",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "288219428__marcosrg9__youtubetv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "199090254__kundajelab__bpnet",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "156880654__jsubelj__g910-gkey-macro-support",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "798260577__kosasih__pi-nexus-autonomous-banking-network",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "39879019__hyperhq__runv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1347801__marcydoty__recursos-nfe-em-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "31986253__GuillaumeGomez__sysinfo",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "116447660__attzonko__mmpy_bot",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86109099__humenda__isolang-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143047851__amzn__mxfusion",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "163555743__nautilus__gateway",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "54489372__snagles__docker-registry-manager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16733466_guelfoweb_knock",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "724439782__intellabs__hpat",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "612023577__absadiki__pywhispercpp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1943878044__danbot-hosting__danbothostingstats",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509847025__hekmon__linkytic",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12303509__abritinthebay__datejs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30657435__mechmotum__cyipopt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "304150952__lenscas__tealr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "7064308__jisaacks__gitgutter",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "374629205__peterhinch__micropython-micro-gui",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "436395377__benchkram__bob",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "227205768__zeronetx__zeronet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "46218363__nnseva__django-jsoneditor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86060799__pypyr__pypyr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "44561719__openaps__oref0",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1028426335__sepehr-rs__sudoku",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "611717422__BAI-Yeqi__OpenPCSeg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "660804542__phalcode__gamevault-backend",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "145297532__lovvskillz__python-discord-webhook",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "61382239__spirit__spirit",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "901887226__OpenZeppelin__stellar-contracts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "44344606__go-chi__chi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "204343221__move-coop__parsons",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4156651__tomerfiliba__plumbum",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "334775686__quantconnect__lean-cli",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "95140462__chaquo__chaquopy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509095053__postech-dao__simperby",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5830987__hapijs__joi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "756096262_NVIDIA-NeMo_Skills",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "appcelerator",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "217595262__burningalchemist__sql_exporter",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "alist-org",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "87575093__zim-desktop-wiki__zim-desktop-wiki",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d2000": [
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206468500__kip-hart__microstructpy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "198756440__boyter__cs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "18814525__crits__crits_services",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "57430416__listen1__listen1_chrome_extension",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6544527__lfpy__lfpy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "108086514__tusimple__mx-maskrcnn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6360988564__rpgtkoolmv__corescript",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "5156526__litewrite__litewrite",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471000066__elden1337__hass-peaq",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "358848720__antonlydike__riscemu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "332952543__jcrist__msgspec",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "199763900__scottbrenner__cfn-lint-action",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "502193049__charmbracelet__gum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "101357472__hydrosquall__tiingo-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "233787675__automl__hpobench",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "78039186__scopefoundry__scopefoundry",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4525013832__quasarframework__app-extension-icon-factory",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "87575093__zim-desktop-wiki__zim-desktop-wiki",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "710656936__skateco__skate",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "631588508__wtfloris__hestia",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "775538884__hotnops__apeman",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "33507869__benjaminvanryseghem__numbro",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16719334__golang__appengine",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "272690859__dragon-userbot__dragon-userbot",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "164900390__fraunhoferportugal__tsfel",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "233561542__lpreterite__vue-tinymce-example",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "seasonedsoftware",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "196937459__tophubs__toplist",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "139830009__flemmerich__pysubgroup",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "717124565__osbuild__bootc-image-builder",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "270246__rmurphey__jqfundamentals",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "28594779__deanishe__alfred-fakeum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302609312__Voyz__ibeam",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "274861986__adapt-python__adapt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "135715691__rmlio__yarrrml-parser",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "8379209806__bokuweb__react-motion-menu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "777111718__Cinnamon__kotaemon",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "22554796__arashm__jdate",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "442874399__mystenlabs__mysten-infra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "67243113__azuread__microsoft-authentication-library-for-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "517190864__titaniumnetwork-dev__ultraviolet",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "367301387__alexshkarin__pylablib",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "964488506_SkyworkAI_Skywork-OR1",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12959597__yiidoc__yii2-redactor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "150129388__foniod__redbpf",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30149358__regebro__supporting-python-3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "46094422__sharadmv__deepx",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "809060646__muzishen__IMAGDressing",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "242499609__maidsafe__bls_dkg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "53438969__globus__globus-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "546752231__Farama-Foundation__Minari",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "902759548__iterorganization__imas-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86238422__tufin__pytos",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "288096097__aliev__aioauth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "489357827__open-feature__python-sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "125721832__hikhvar__mqtt2prometheus",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "184619482__larq__zoo",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "639558708__d2foundry__oracle_engine",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "73024951__astropy__sphinx-automodapi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "20350058__reignite__burnout.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "115798843__itsubaki__q",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "240317939__hugomrdias__playwright-test",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "130027269__amadeusitgroup__redis-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "849953736__orbital-materials__orb-models",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206581466__izneo-get__izneo-get",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "870976364__openreasoner__openr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302749270__canop__dysk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "139229009__sth2018__fastwordquery",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36242853__bjodah__chempy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "81609715__awalterschulze__goderive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "23362024__granze__react-starterify",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "290094833__fastaudio__fastaudio",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "168676565__jziolkowski__tdm",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "555606448__christiansandberg__canopen",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "282803381__tesselode__kira",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "19361153__tdryer__hangups",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "226832620__argoproj-labs__argocd-notifications",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "636446382__Synphonyte__leptos-struct-table",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "99020025__oasis-open__cti-taxii-server",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "61588840__henrygd__bigpicture",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "126448237__DevExpress__devextreme-vue",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "571926051__graspnet__anygrasp_sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "52364316__carbonblack__cbapi-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "554730081__logos-co__overwatch",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "440826__mleibman__slickgrid",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "173351817__mitre-attack__attack-scripts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "213308003__bluejekyll__foundationdb-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "671675593__shopify__theme-tools",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36932809__tideland__golib",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "169021396__wokket__rust-hl7",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302284973__wenjianzhang__go-admin",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "228394097__papacarp__pooltool.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "96932974__gammazero__nexus",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "56178599__dmort27__epitran",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "620517607__blitzarx1__egui_graphs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "466513703__kornia__kornia-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1993032712__zagortenay333__timepp__gnome",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "617067663__selefra__selefra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "261263035__atenreiro__opensquat",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "829989857__vetdatahub__vetdatahub_website",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "120190957__vkuznecovas__mouthful",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "73422616__cytomining__deepprofiler",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110320121__jgodson__shopify-script-creator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "774546545__RustForWeb__radix",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "31986253__GuillaumeGomez__sysinfo",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12419919__dotledger__dotledger",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "114788369__cloudflare__templates",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "9489978__jquast__telnetlib3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "appcelerator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "47771861__ivark__ivark.github.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "88814110__mozilla__lightbeam-we",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "657267150_robfiras_loco-mujoco",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "254864913__continvvm__continuum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1953786763__eleutherai__pyfra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "137578497__selinuxproject__setools",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "40443424__daniellandau__switcher",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "31554492__ceph__cbt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "90175281__overtools__io_scene_owm",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4110611__mapproxy__mapproxy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5655324598__rust-osdev__xhci",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "366936468__googlecloudplatform__elcarro-oracle-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "158754800__Neoteroi__BlackSheep",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "225692183__ciehanski__libgen-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "157452080__aws__aws-iot-device-sdk-python-v2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "214691457__offchainlabs__arbitrum-orbit-sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "691238354__pimlicolabs__permissionless.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471176429__nwg-piotr__nwg-look",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "44561719__openaps__oref0",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "22457420__dckc__rust-sqlite3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "694314374__librasn__compiler",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "49749488__platformio__platformio-atom-ide",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "339124227__fsaris__home-assistant-zonneplan-one",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "922051092__hkust-nlp__simpleRL-reason",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "496002163__rampasek__graphgps",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3182350__amoffat__sh",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "288219428__marcosrg9__youtubetv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "199090254__kundajelab__bpnet",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "156880654__jsubelj__g910-gkey-macro-support",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4156651__tomerfiliba__plumbum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "39879019__hyperhq__runv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1347801__marcydoty__recursos-nfe-em-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "7064308__jisaacks__gitgutter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "116447660__attzonko__mmpy_bot",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86109099__humenda__isolang-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143047851__amzn__mxfusion",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "163555743__nautilus__gateway",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "54489372__snagles__docker-registry-manager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16733466_guelfoweb_knock",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "756096262_NVIDIA-NeMo_Skills",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "612023577__absadiki__pywhispercpp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "334775686__quantconnect__lean-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "509847025__hekmon__linkytic",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12303509__abritinthebay__datejs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30657435__mechmotum__cyipopt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "304150952__lenscas__tealr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "25528021__simov__grant",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "374629205__peterhinch__micropython-micro-gui",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "436395377__benchkram__bob",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "217595262__burningalchemist__sql_exporter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "46218363__nnseva__django-jsoneditor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86060799__pypyr__pypyr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "alist-org",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1028426335__sepehr-rs__sudoku",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "611717422__BAI-Yeqi__OpenPCSeg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "591099659__microsoft__codamosa",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "660804542__phalcode__gamevault-backend",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "145297532__lovvskillz__python-discord-webhook",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "61382239__spirit__spirit",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "901887226__OpenZeppelin__stellar-contracts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "44344606__go-chi__chi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "60068819__LifeActor__ykdl",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "204343221__move-coop__parsons",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "294083365__drogue-iot__drogue-cloud",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "1943878044__danbot-hosting__danbothostingstats",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "798260577__kosasih__pi-nexus-autonomous-banking-network",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "509095053__postech-dao__simperby",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "5830987__hapijs__joi",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "95140462__chaquo__chaquopy",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "227205768__zeronetx__zeronet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "724439782__intellabs__hpat",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d5000": [
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206468500__kip-hart__microstructpy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4110611__mapproxy__mapproxy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "108086514__tusimple__mx-maskrcnn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "198756440__boyter__cs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6544527__lfpy__lfpy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471000066__elden1337__hass-peaq",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "5156526__litewrite__litewrite",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "18814525__crits__crits_services",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "6360988564__rpgtkoolmv__corescript",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "57430416__listen1__listen1_chrome_extension",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4525013832__quasarframework__app-extension-icon-factory",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "332952543__jcrist__msgspec",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "199763900__scottbrenner__cfn-lint-action",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "358848720__antonlydike__riscemu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "78039186__scopefoundry__scopefoundry",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "502193049__charmbracelet__gum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "233787675__automl__hpobench",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "775538884__hotnops__apeman",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "87575093__zim-desktop-wiki__zim-desktop-wiki",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "101357472__hydrosquall__tiingo-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "631588508__wtfloris__hestia",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "33507869__benjaminvanryseghem__numbro",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16719334__golang__appengine",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "710656936__skateco__skate",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "272690859__dragon-userbot__dragon-userbot",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "196937459__tophubs__toplist",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "717124565__osbuild__bootc-image-builder",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "233561542__lpreterite__vue-tinymce-example",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "164900390__fraunhoferportugal__tsfel",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "seasonedsoftware",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302609312__Voyz__ibeam",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "270246__rmurphey__jqfundamentals",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "139830009__flemmerich__pysubgroup",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "28594779__deanishe__alfred-fakeum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "137578497__selinuxproject__setools",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "517190864__titaniumnetwork-dev__ultraviolet",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "8379209806__bokuweb__react-motion-menu",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "274861986__adapt-python__adapt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "22554796__arashm__jdate",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "777111718__Cinnamon__kotaemon",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "67243113__azuread__microsoft-authentication-library-for-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "367301387__alexshkarin__pylablib",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "442874399__mystenlabs__mysten-infra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "150129388__foniod__redbpf",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "135715691__rmlio__yarrrml-parser",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30149358__regebro__supporting-python-3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "964488506_SkyworkAI_Skywork-OR1",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "46094422__sharadmv__deepx",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "809060646__muzishen__IMAGDressing",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "546752231__Farama-Foundation__Minari",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12959597__yiidoc__yii2-redactor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "53438969__globus__globus-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "489357827__open-feature__python-sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86238422__tufin__pytos",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "242499609__maidsafe__bls_dkg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "288096097__aliev__aioauth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "184619482__larq__zoo",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "902759548__iterorganization__imas-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "639558708__d2foundry__oracle_engine",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "20350058__reignite__burnout.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "115798843__itsubaki__q",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "125721832__hikhvar__mqtt2prometheus",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "591099659__microsoft__codamosa",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "240317939__hugomrdias__playwright-test",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "206581466__izneo-get__izneo-get",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "870976364__openreasoner__openr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "130027269__amadeusitgroup__redis-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "139229009__sth2018__fastwordquery",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "73024951__astropy__sphinx-automodapi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "849953736__orbital-materials__orb-models",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "23362024__granze__react-starterify",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302749270__canop__dysk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36242853__bjodah__chempy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "555606448__christiansandberg__canopen",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "290094833__fastaudio__fastaudio",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "81609715__awalterschulze__goderive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "282803381__tesselode__kira",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "168676565__jziolkowski__tdm",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "19361153__tdryer__hangups",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "60068819__LifeActor__ykdl",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "226832620__argoproj-labs__argocd-notifications",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "636446382__Synphonyte__leptos-struct-table",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "99020025__oasis-open__cti-taxii-server",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "61588840__henrygd__bigpicture",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "571926051__graspnet__anygrasp_sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "52364316__carbonblack__cbapi-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "554730081__logos-co__overwatch",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "126448237__DevExpress__devextreme-vue",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "671675593__shopify__theme-tools",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "440826__mleibman__slickgrid",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "173351817__mitre-attack__attack-scripts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "213308003__bluejekyll__foundationdb-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "169021396__wokket__rust-hl7",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "36932809__tideland__golib",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "228394097__papacarp__pooltool.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "56178599__dmort27__epitran",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "302284973__wenjianzhang__go-admin",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "620517607__blitzarx1__egui_graphs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "466513703__kornia__kornia-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1993032712__zagortenay333__timepp__gnome",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "261263035__atenreiro__opensquat",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "96932974__gammazero__nexus",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "617067663__selefra__selefra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "73422616__cytomining__deepprofiler",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "204343221__move-coop__parsons",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "829989857__vetdatahub__vetdatahub_website",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "724439782__intellabs__hpat",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "120190957__vkuznecovas__mouthful",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "774546545__RustForWeb__radix",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110320121__jgodson__shopify-script-creator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "31986253__GuillaumeGomez__sysinfo",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "25528021__simov__grant",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1943878044__danbot-hosting__danbothostingstats",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12419919__dotledger__dotledger",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "appcelerator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "9489978__jquast__telnetlib3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "47771861__ivark__ivark.github.io",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "657267150_robfiras_loco-mujoco",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "254864913__continvvm__continuum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "88814110__mozilla__lightbeam-we",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1953786763__eleutherai__pyfra",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "5830987__hapijs__joi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "40443424__daniellandau__switcher",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "90175281__overtools__io_scene_owm",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "31554492__ceph__cbt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "5655324598__rust-osdev__xhci",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "95140462__chaquo__chaquopy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "366936468__googlecloudplatform__elcarro-oracle-operator",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "158754800__Neoteroi__BlackSheep",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "225692183__ciehanski__libgen-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "214691457__offchainlabs__arbitrum-orbit-sdk",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "157452080__aws__aws-iot-device-sdk-python-v2",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "691238354__pimlicolabs__permissionless.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "471176429__nwg-piotr__nwg-look",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "44561719__openaps__oref0",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "49749488__platformio__platformio-atom-ide",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "694314374__librasn__compiler",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "339124227__fsaris__home-assistant-zonneplan-one",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "922051092__hkust-nlp__simpleRL-reason",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "22457420__dckc__rust-sqlite3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "496002163__rampasek__graphgps",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3182350__amoffat__sh",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "288219428__marcosrg9__youtubetv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "156880654__jsubelj__g910-gkey-macro-support",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "39879019__hyperhq__runv",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "199090254__kundajelab__bpnet",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1347801__marcydoty__recursos-nfe-em-python",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4156651__tomerfiliba__plumbum",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "7064308__jisaacks__gitgutter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "116447660__attzonko__mmpy_bot",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86109099__humenda__isolang-rs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143047851__amzn__mxfusion",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "54489372__snagles__docker-registry-manager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "163555743__nautilus__gateway",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "756096262_NVIDIA-NeMo_Skills",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "16733466_guelfoweb_knock",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "334775686__quantconnect__lean-cli",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "612023577__absadiki__pywhispercpp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "509847025__hekmon__linkytic",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "12303509__abritinthebay__datejs",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "304150952__lenscas__tealr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "509095053__postech-dao__simperby",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "30657435__mechmotum__cyipopt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "374629205__peterhinch__micropython-micro-gui",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "436395377__benchkram__bob",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "217595262__burningalchemist__sql_exporter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "46218363__nnseva__django-jsoneditor",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "86060799__pypyr__pypyr",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1028426335__sepehr-rs__sudoku",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "alist-org",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "611717422__BAI-Yeqi__OpenPCSeg",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "145297532__lovvskillz__python-discord-webhook",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "660804542__phalcode__gamevault-backend",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "61382239__spirit__spirit",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "901887226__OpenZeppelin__stellar-contracts",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "44344606__go-chi__chi",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "114788369__cloudflare__templates",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "294083365__drogue-iot__drogue-cloud",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "227205768__zeronetx__zeronet",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "798260577__kosasih__pi-nexus-autonomous-banking-network",
+        "status": "ok",
+        "reason": ""
+      }
+    ]
+  },
+  "elapsed_sec": 59.700990438461304
+}

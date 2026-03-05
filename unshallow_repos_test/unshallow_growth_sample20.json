@@ -1,0 +1,591 @@
+{
+  "timestamp_utc": 1772725155,
+  "repos_root": "/shared_workspace_mfs/repos",
+  "sample_size": 20,
+  "seed": 42,
+  "targets": [
+    100,
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "sample_repos": [
+    "/shared_workspace_mfs/repos/561092051__replicate__dreambooth",
+    "/shared_workspace_mfs/repos/143831524__uxlfoundation__scikit-learn-intelex",
+    "/shared_workspace_mfs/repos/107443709__modosc__global-jsdom",
+    "/shared_workspace_mfs/repos/68692129__qgis__qwc2",
+    "/shared_workspace_mfs/repos/2318167828__inklewriter__freeinklewriter",
+    "/shared_workspace_mfs/repos/21339768__reactjs__react-tutorial",
+    "/shared_workspace_mfs/repos/201071164__jenojp__negspacy",
+    "/shared_workspace_mfs/repos/1574428535__facebookincubator__keyframes",
+    "/shared_workspace_mfs/repos/68068967__fogleman__primitive",
+    "/shared_workspace_mfs/repos/140007934__liaan__broadlink_ac_mqtt",
+    "/shared_workspace_mfs/repos/608343239__muppet3000__homeassistant-grott",
+    "/shared_workspace_mfs/repos/685808150__lrstanley__go-ytdlp",
+    "/shared_workspace_mfs/repos/91264719__te-online__timemanager",
+    "/shared_workspace_mfs/repos/4530073433__rocky__python-decompile3",
+    "/shared_workspace_mfs/repos/133101298__adhaamehab__textblob-ar",
+    "/shared_workspace_mfs/repos/503333940__mbrg__power-pwn",
+    "/shared_workspace_mfs/repos/3346928__chjj__tty.js",
+    "/shared_workspace_mfs/repos/110242469__walac__pyusb",
+    "/shared_workspace_mfs/repos/10938894__mikaem__oasis",
+    "/shared_workspace_mfs/repos/136110609__ecshackweek__impedance.py"
+  ],
+  "stages": {
+    "before": {
+      "bytes": 2913565155328,
+      "tib": 2.6498720720410347,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385476 |                    - |       - |                    - |       - |\n length   |        1672673155427 |                    - |       - |                    - |       - |\n size     |        2913565155328 |                    - |       - |                    - |       - |\n realsize |        2913565155328 |                    - |       - |                    - |       - |\n"
+    },
+    "d100": {
+      "bytes": 2913568112640,
+      "tib": 2.64987476170063,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385485 |                    - |       - |                    - |       - |\n length   |        1672675724196 |                    - |       - |                    - |       - |\n size     |        2913568112640 |                    - |       - |                    - |       - |\n realsize |        2913568112640 |                    - |       - |                    - |       - |\n"
+    },
+    "d500": {
+      "bytes": 2913573101568,
+      "tib": 2.6498792991042137,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385494 |                    - |       - |                    - |       - |\n length   |        1672680273691 |                    - |       - |                    - |       - |\n size     |        2913573101568 |                    - |       - |                    - |       - |\n realsize |        2913573101568 |                    - |       - |                    - |       - |\n"
+    },
+    "d1000": {
+      "bytes": 2913579204608,
+      "tib": 2.6498848497867584,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385503 |                    - |       - |                    - |       - |\n length   |        1672686061142 |                    - |       - |                    - |       - |\n size     |        2913579204608 |                    - |       - |                    - |       - |\n realsize |        2913579204608 |                    - |       - |                    - |       - |\n"
+    },
+    "d2000": {
+      "bytes": 2913584504832,
+      "tib": 2.6498896703124046,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385510 |                    - |       - |                    - |       - |\n length   |        1672691131813 |                    - |       - |                    - |       - |\n size     |        2913584504832 |                    - |       - |                    - |       - |\n realsize |        2913584504832 |                    - |       - |                    - |       - |\n"
+    },
+    "d5000": {
+      "bytes": 2913589370880,
+      "tib": 2.649894095957279,
+      "mfsgetquota": "/shared_workspace_mfs/repos:\nsoft quota grace period: default\n          |        current value |           soft quota | percent |           hard quota | percent |\n inodes   |             21385512 |                    - |       - |                    - |       - |\n length   |        1672695884807 |                    - |       - |                    - |       - |\n size     |        2913589370880 |                    - |       - |                    - |       - |\n realsize |        2913589370880 |                    - |       - |                    - |       - |\n"
+    }
+  },
+  "delta_bytes": {
+    "before_to_d100": 2957312,
+    "before_to_d500": 7946240,
+    "before_to_d1000": 14049280,
+    "before_to_d2000": 19349504,
+    "before_to_d5000": 24215552,
+    "d100_to_d500": 4988928,
+    "d500_to_d1000": 6103040,
+    "d1000_to_d2000": 5300224,
+    "d2000_to_d5000": 4866048
+  },
+  "deepen_results": {
+    "d100": [
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d500": [
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d1000": [
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d2000": [
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "ok",
+        "reason": ""
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "ok",
+        "reason": ""
+      }
+    ],
+    "d5000": [
+      {
+        "repo": "143831524__uxlfoundation__scikit-learn-intelex",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "561092051__replicate__dreambooth",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "2318167828__inklewriter__freeinklewriter",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "107443709__modosc__global-jsdom",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "21339768__reactjs__react-tutorial",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "201071164__jenojp__negspacy",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "1574428535__facebookincubator__keyframes",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68068967__fogleman__primitive",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "140007934__liaan__broadlink_ac_mqtt",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "608343239__muppet3000__homeassistant-grott",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "685808150__lrstanley__go-ytdlp",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "91264719__te-online__timemanager",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "4530073433__rocky__python-decompile3",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "133101298__adhaamehab__textblob-ar",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "503333940__mbrg__power-pwn",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "3346928__chjj__tty.js",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "110242469__walac__pyusb",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "10938894__mikaem__oasis",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "136110609__ecshackweek__impedance.py",
+        "status": "skipped",
+        "reason": "not_shallow"
+      },
+      {
+        "repo": "68692129__qgis__qwc2",
+        "status": "ok",
+        "reason": ""
+      }
+    ]
+  },
+  "elapsed_sec": 6.4370198249816895
+}

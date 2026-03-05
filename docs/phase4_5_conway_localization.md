@@ -1,4 +1,4 @@
-# Experiment 4.4: SE-Head Stack for Region Localization
+# Experiment 4.5: Conway Signals for Region Localization
 
 **Date**: 2026-03-05
 **Data**: 6,651 function anchors, 135 repos
@@ -8,8 +8,9 @@
 **Models**: linear, fusion, mlp, pairwise
 **Seeds**: [42, 43, 44]
 **Static CC coverage**: 6,258/6,651 (94.09%)
-**Uses org metrics**: no
-**SE feature channels**: teacher_logit, student_logit, tfidf_logit, loc_logit, cyclomatic_complexity, churn_proxy
+**Org metrics coverage**: 6,651/6,651 (100.00%)
+**Uses org metrics**: yes
+**SE feature channels**: teacher_logit, student_logit, tfidf_logit, loc_logit, cyclomatic_complexity, churn_proxy, org_commits_touching_file, org_distinct_authors, org_top_author_fraction, org_author_entropy, org_ownership_friction, org_cochange_weighted_degree, org_cochange_unique_neighbors, org_cochange_cross_module_ratio, org_interface_stress
 
 ## Reframing summary
 
@@ -26,10 +27,10 @@ No full-model SFT/RL is used.
 | TF-IDF | 7.9% | 25.4% | 29.4% | 56.2% | 41.2% | 13 |
 | Teacher | 11.6% | 42.0% | 50.6% | 56.1% | 69.5% | 13 |
 | Student | 1.3% | 22.3% | 43.1% | 46.2% | 49.4% | 13 |
-| SE-Linear | 3.9% | 39.4% | 51.4% | 57.7% | 58.0% | 13 |
+| SE-Linear | 3.9% | 39.3% | 49.8% | 58.2% | 52.9% | 13 |
 | SE-Fusion | 3.9% | 40.0% | 51.4% | 58.9% | 55.1% | 13 |
-| SE-MLP | 11.0% | 40.3% | 49.6% | 58.4% | 54.6% | 13 |
-| SE-Pairwise | 3.3% | 39.4% | 50.5% | 58.8% | 50.0% | 13 |
+| SE-MLP | 11.0% | 30.5% | 50.6% | 59.0% | 51.6% | 13 |
+| SE-Pairwise | 3.3% | 38.8% | 49.2% | 58.1% | 50.8% | 13 |
 
 ## Task B: Feature Localization (`has_feature`)
 
@@ -40,17 +41,17 @@ No full-model SFT/RL is used.
 | TF-IDF | 1.1% | 16.0% | 21.1% | 34.2% | 47.8% | 10 |
 | Teacher | 1.8% | 11.4% | 16.9% | 31.7% | 51.4% | 10 |
 | Student | 1.8% | 11.9% | 21.7% | 36.5% | 53.2% | 10 |
-| SE-Linear | 1.9% | 11.6% | 19.6% | 38.1% | 59.1% | 10 |
+| SE-Linear | 3.6% | 14.2% | 17.1% | 38.2% | 64.3% | 10 |
 | SE-Fusion | 0.9% | 12.6% | 18.7% | 37.4% | 54.1% | 10 |
-| SE-MLP | 4.2% | 13.6% | 19.3% | 39.1% | 73.5% | 10 |
-| SE-Pairwise | 0.9% | 13.2% | 18.6% | 35.6% | 55.6% | 10 |
+| SE-MLP | 6.0% | 15.9% | 18.5% | 38.8% | 81.0% | 10 |
+| SE-Pairwise | 3.6% | 15.8% | 17.9% | 37.7% | 67.2% | 10 |
 
 ## Key deltas
 
-- Pairwise vs Teacher (bugfix R@10): **+2.7 pp**
-- Pairwise vs Random (feature R@10): **+2.1 pp**
+- Pairwise vs Teacher (bugfix R@10): **+2.0 pp**
+- Pairwise vs Random (feature R@10): **+4.2 pp**
 
 ## Artifacts
 
-- `docs/phase4_4_se_heads_metrics.json`
-- `docs/phase4_4_topk_predictions.jsonl`
+- `docs/phase4_5_conway_metrics.json`
+- `docs/phase4_5_topk_predictions.jsonl`

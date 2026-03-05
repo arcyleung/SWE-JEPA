@@ -296,7 +296,137 @@ Requires: developer ownership data, module-level dependency graph. Predict wheth
 implementation will require cross-team followups (Conway's law violation signal). Currently
 underspecified; revisit after Exp 4.4 establishes stable localization heads.
 
-### Experiment 4.6 — Latent-conditioned decoder (Phase 3 in proposal)
+#### Implementation update (2026-03-05)
 
-Train a small decoder that takes the student's 4096-dim predicted latent and generates
-function bodies autoregressively. Evaluate with pass@k on unit tests.
+Conway proxy metrics are now implemented and materialized per anchor:
+- `ownership_friction`
+- `interface_stress`
+- supporting ownership/co-change channels (`distinct_authors`, weighted co-change degree, etc.)
+
+Collection pipeline:
+- `extract_org_metrics.py` computes git-history metrics with DB-proxy fallback
+- Output: `followup_org_metrics.jsonl` and Postgres `followup_org_metrics`
+- Coverage on active 4.x set: `6,651 / 6,651` anchors (0 missing)
+
+#### Preliminary localization ablation (Exp 4.5 pilot)
+
+Using `train_region_ranker.py --use-org-metrics` with same split/seeds as Exp 4.4:
+
+- Bugfix localization (`min_overlap=0.1`)
+  - Best R@10 moved from **58.9%** (Exp 4.4 fusion) to **59.0%** (Conway-MLP), small +0.1 pp.
+  - MRR dropped for some heads; org features mostly affect deeper ranks.
+- Feature localization
+  - Pairwise head improved R@10 by **+2.1 pp** (35.6% → 37.7%) and MRR by **+11.7 pp**.
+  - Best absolute R@10 remained near baseline (MLP 39.1% → 38.8%).
+
+Interpretation: Conway signals are learnable by cheap heads and can improve ranking quality
+for specific objectives (notably pairwise feature localization), but are not yet a universal
+lift across all heads/labels.
+
+### Experiment 4.6 — PR Acceptance Reranking with Conway-Aware SWE-JEPA
+
+#### Motivation
+
+We want to test SWE-JEPA as an **SE review/reranking model** (not a generator): can it pick
+the PR variant that is most likely to be accepted upstream when all candidates are
+functionally equivalent but differ in engineering quality and organizational fit?
+
+This directly targets the practical use-case: rerank candidate patches/PRs before submission.
+
+#### Core hypothesis
+
+A Conway-aware SWE-JEPA ranker (frozen code reps + cheap ranking head + org proxies) will
+outperform a standalone coder model at identifying the variant that mirrors real upstream
+acceptance behavior.
+
+#### Dataset design: 6-way PR candidate packs
+
+For each historically merged PR (ground truth positive), construct 5 synthetic negatives:
+
+1. Naming drift variant
+   - less consistent variable/function/class naming conventions
+2. Cross-cutting noise variant
+   - unnecessary edits across unrelated files/modules
+3. Scope-bloat variant
+   - combines multiple concerns into one PR rather than localized change
+4. Architectural-boundary variant
+   - introduces changes that cross likely module ownership boundaries
+5. Ownership-friction variant
+   - edit pattern likely to increase coordination burden
+
+Each pack has 6 candidates total (1 real merged + 5 synthetic). All variants must preserve
+functional behavior (tests/lint/syntax checks where possible).
+
+#### Labels and task
+
+- Group/ranking unit: `(repo, source_pr_id, variant_pack_id)`
+- Target: rank candidates by merge-likelihood; the true merged PR is label `1`, variants `0`
+- Primary framing: listwise/pairwise reranking
+
+#### Feature sets
+
+Base representation channels:
+- teacher/student frozen embedding signals
+- textual/structural channels from Exp 4.4 (`tfidf`, LOC, CC, churn proxy)
+- Conway proxies from Exp 4.5 (`ownership_friction`, `interface_stress`, co-change stats)
+
+Additional metadata from `prs_copy` (candidate pool to evaluate):
+- `requested_reviewers`
+- `total_review_threads`, `review_threads`
+- `total_comments`, `comments`
+- `closing_issue_id`
+- `created_at`, `merged_at`
+
+Important leakage policy:
+- **Allowed at inference-time**: fields observable by review time (e.g., requested reviewers,
+  linked issues present on PR, early thread/comment counts if we define a fixed snapshot cutoff).
+- **Not allowed as direct features** for merge prediction: post-outcome or target-adjacent fields
+  such as final `merged_at`, full/final review-thread totals after decision, or any signal that
+  directly encodes acceptance outcome timing.
+- `created_at`/`merged_at` should be used for analysis-derived targets (e.g., time-to-merge) or
+  stratification, not naive predictive inputs.
+
+#### Baselines
+
+1. Standalone coder model scorer
+   - Prompted to score each candidate PR's merge-likelihood from diff + context
+2. Non-neural/classical baseline
+   - handcrafted + metadata features with logistic/pairwise ranker
+3. SWE-JEPA without Conway channels (ablation)
+4. SWE-JEPA with Conway + allowed `prs_copy` signals (full model)
+
+#### Evaluation
+
+Primary:
+- Top-1 accuracy (select true merged PR among 6)
+- MRR
+- Pairwise AUC within each pack
+
+Secondary:
+- Win-rate by deficiency type (naming/cross-cutting/scope/architecture/ownership)
+- Calibration (Brier / reliability bins)
+- Robustness by repo/language/PR-size buckets
+
+#### Implementation plan
+
+1. `build_pr_variant_benchmark.py`
+   - sample merged PRs, generate 5 controlled variants per PR, run validity checks
+2. `extract_prs_copy_signals.py`
+   - parse/normalize `prs_copy` signals; enforce inference-time feature mask
+3. `train_pr_acceptance_reranker.py`
+   - pairwise/listwise ranker on frozen SWE-JEPA + metadata channels
+4. `score_pr_candidates_coder_baseline.py`
+   - standalone coder-model scoring pipeline
+5. `eval_pr_acceptance_reranking.py`
+   - aggregate metrics, per-deficiency breakdown, significance tests
+6. Report
+   - `docs/phase4_6_pr_acceptance_reranking.md`
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| SWE-JEPA+Conway Top-1 > coder baseline Top-1 | +8 pp absolute |
+| SWE-JEPA+Conway MRR > SWE-JEPA (no Conway) | +5 pp absolute |
+| Win-rate vs at least 4/5 deficiency types | > 55% each |
+| Compute cost | no full-model SFT/RL; lightweight heads only |
