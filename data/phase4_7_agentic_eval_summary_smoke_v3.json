@@ -1,0 +1,27 @@
+{
+  "date_utc": "2026-03-05T22:23:08.055365+00:00",
+  "args": {
+    "model_name": "qwen3_coder_30b",
+    "limit": 2,
+    "concurrency": 2,
+    "step_limit": 1,
+    "timeout_sec": 180,
+    "agent_python": "/usr/bin/python3",
+    "api_base": null,
+    "api_key": null,
+    "litellm_model": null,
+    "seed": 42,
+    "out_jsonl": "data/phase4_7_agentic_eval_results_smoke_v3.jsonl",
+    "out_summary": "data/phase4_7_agentic_eval_summary_smoke_v3.json",
+    "traj_dir": "data/phase4_7_trajectories_smoke_v3"
+  },
+  "n_tasks": 2,
+  "status_counts": {
+    "ok": 2
+  },
+  "ok_rate": 1.0,
+  "avg_elapsed_sec": 3.8811821937561035,
+  "avg_changed_files_after": 0.0,
+  "elapsed_total_sec": 7.725436449050903,
+  "out_jsonl": "data/phase4_7_agentic_eval_results_smoke_v3.jsonl"
+}

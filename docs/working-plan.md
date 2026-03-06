@@ -430,3 +430,106 @@ Secondary:
 | SWE-JEPA+Conway MRR > SWE-JEPA (no Conway) | +5 pp absolute |
 | Win-rate vs at least 4/5 deficiency types | > 55% each |
 | Compute cost | no full-model SFT/RL; lightweight heads only |
+
+### Experiment 4.7 — Agentic PR Evolution Steering (Small Head + Large Coder)
+
+#### Motivation
+
+Exp 4.6 validates static PR-candidate reranking. The next step is fair, agentic comparison:
+can a **small trained steerer** guide a large coder model through iterative PR evolution
+(implement → review feedback → revision) better than prompt-only coding agents?
+
+This keeps SWE-JEPA’s core value proposition:
+- frozen representation substrate
+- cheap downstream adaptation
+- no full-model SFT/RL for the large coder backbone
+
+#### Core hypothesis
+
+A small steerer trained on PR-state transitions and review feedback can improve acceptance-rate
+and reduce review churn when used to guide a large coder model inside a shared agent scaffold.
+SWE-JEPA latents should make this steerer cheaper to train and more sample-efficient.
+
+#### Environment and fairness
+
+- Single agentic scaffold for all methods (OpenHands-style loop).
+- Same tools, context window policy, retrieval budget, and step budget.
+- Same repo/time holdouts.
+- Same task set and stopping criteria.
+
+Compared systems:
+1. Prompt-only coder agent (baseline).
+2. Coder + small steerer (trained on task/review trajectories).
+3. Coder + small steerer on SWE-JEPA latent state (efficiency variant).
+
+#### PR evolution state model
+
+Model each trajectory as state/action transitions over PR lifecycle:
+- States (example): `drafting`, `ready_for_review`, `changes_requested_risk`,
+  `likely_mergeable`, `stalled`.
+- Actions: inspect files, edit patch, run tests, re-scope changes, submit update, etc.
+
+Steerer outputs:
+- action-value / rank score for next action
+- merge-likelihood estimate for current trajectory prefix
+- optional “refactor-risk” score for changed regions
+
+#### Refactor-demand signal (new)
+
+Use `review_threads` and `comments` column of prs_copy table to derive supervision for “likely refactor requested”.
+Potential labels/features:
+- presence of refactor-style language:
+  - “refactor”, “split this”, “extract”, “too large”, “naming”, “architecture”, “cleanup”
+- thread resolution latency and reopen patterns
+- comment density on specific files/hunks
+- repeated reviewer concern categories across updates
+- review outcome proxies: `changes requested` rounds before approval
+
+These signals provide a direct learning target for which edits tend to trigger senior-reviewer
+refactor demands.
+
+#### Data pipeline
+
+Build transition dataset from `prs_copy` + review artifacts:
+- `(state_t, action_t, state_{t+1}, reward_t)`
+- rewards/proxies:
+  - positive: merged quickly, low churn, few revision rounds
+  - negative: multiple change-request cycles, high refactor-demand score, non-merge
+
+Include both code/context features and review interaction features.
+
+#### Evaluation
+
+Primary:
+- acceptance/merge rate under fixed rollout budget
+- review rounds to acceptance
+- time-to-acceptable patch
+
+Secondary:
+- refactor-demand incidence after agent submission
+- scope discipline (unnecessary file touches)
+- architecture/ownership stress delta
+
+Efficiency:
+- GPU-hours to train steerer
+- rollouts needed to reach target acceptance rate
+
+#### Implementation plan
+
+1. `build_pr_mdp_dataset.py`
+   - construct PR evolution transitions and refactor-demand labels
+2. `train_pr_steerer.py`
+   - train compact steerer head (pairwise/listwise + value prediction)
+3. `run_agentic_eval.py`
+   - shared scaffold evaluation for baseline vs steered agents
+4. `docs/phase4_7_agentic_pr_steering.md`
+   - results, fairness config, ablations, efficiency table
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| Steered coder acceptance rate > prompt-only coder | +8 pp absolute |
+| Median review rounds to acceptance | reduced |
+| Refactor-demand incidence after submission | reduced |
+| Steerer training cost | substantially below full coder SFT |

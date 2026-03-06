@@ -1,0 +1,7 @@
+{
+  "rows": 20000,
+  "accepted_rate": 0.945,
+  "refactor_requested_rate": 0.0502,
+  "review_friction_rate": 0.25765,
+  "out_jsonl": "/shared_workspace_mfs/arthur/coder/docs/phase4_7_pr_mdp_dataset.jsonl"
+}

@@ -11,13 +11,14 @@ import re
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 import pg8000.native
 import yaml
 from openai import AsyncOpenAI
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import StandardScaler
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -67,8 +68,11 @@ def _parse_files(file_patches) -> list[str]:
         return []
     out = []
     for x in fp:
+        if isinstance(x, str) and x:
+            out.append(x)
+            continue
         if isinstance(x, dict):
-            p = x.get("file_path") or x.get("path")
+            p = x.get("file_path") or x.get("path") or x.get("file") or x.get("filename")
             if isinstance(p, str) and p:
                 out.append(p)
     return list(dict.fromkeys(out))
@@ -220,35 +224,46 @@ def _name_quality(title: str) -> float:
     return float(good / len(toks))
 
 
-def _candidate_features(base: dict, kind: str) -> dict:
+def _candidate_features(base: dict, kind: str, rng: random.Random) -> dict:
     x = dict(base)
     x["variant_kind"] = kind
+    # Add mild jitter to reduce deterministic separability.
+    x["changed_files"] = max(1.0, x["changed_files"] + rng.uniform(-0.4, 0.4))
+    x["additions"] = max(1.0, x["additions"] * (1.0 + rng.uniform(-0.06, 0.06)))
+    x["deletions"] = max(1.0, x["deletions"] * (1.0 + rng.uniform(-0.06, 0.06)))
+    x["cross_module_ratio"] = float(min(1.0, max(0.0, x["cross_module_ratio"] + rng.uniform(-0.03, 0.03))))
+    x["naming_quality"] = float(min(1.0, max(0.0, x["naming_quality"] + rng.uniform(-0.04, 0.04))))
+    x["ownership_friction_mean"] = float(min(1.0, max(0.0, x["ownership_friction_mean"] + rng.uniform(-0.03, 0.03))))
+    x["interface_stress_mean"] = float(min(10.0, max(0.0, x["interface_stress_mean"] + rng.uniform(-0.10, 0.10))))
+    x["cochange_cross_module_ratio_mean"] = float(
+        min(1.0, max(0.0, x["cochange_cross_module_ratio_mean"] + rng.uniform(-0.03, 0.03)))
+    )
     if kind == "real":
         return x
     if kind == "naming_drift":
-        x["naming_quality"] = max(0.05, x["naming_quality"] * 0.45)
-        x["risk_scope"] += 0.10
+        x["naming_quality"] = max(0.05, x["naming_quality"] * rng.uniform(0.40, 0.75))
+        x["risk_scope"] += rng.uniform(0.05, 0.14)
     elif kind == "cross_cutting":
-        x["changed_files"] = float(x["changed_files"] * 1.8 + 3.0)
-        x["module_count"] = float(x["module_count"] + 2.0)
-        x["cross_module_ratio"] = min(1.0, x["cross_module_ratio"] + 0.25)
-        x["cochange_cross_module_ratio_mean"] = min(1.0, x["cochange_cross_module_ratio_mean"] + 0.18)
-        x["risk_scope"] += 0.25
+        x["changed_files"] = float(x["changed_files"] * rng.uniform(1.25, 1.7) + rng.uniform(1.0, 3.5))
+        x["module_count"] = float(x["module_count"] + rng.uniform(1.0, 2.5))
+        x["cross_module_ratio"] = min(1.0, x["cross_module_ratio"] + rng.uniform(0.12, 0.28))
+        x["cochange_cross_module_ratio_mean"] = min(1.0, x["cochange_cross_module_ratio_mean"] + rng.uniform(0.09, 0.20))
+        x["risk_scope"] += rng.uniform(0.12, 0.28)
     elif kind == "scope_bloat":
-        x["additions"] = float(x["additions"] * 2.0 + 80.0)
-        x["deletions"] = float(x["deletions"] * 1.8 + 60.0)
-        x["changed_files"] = float(x["changed_files"] * 1.6 + 2.0)
-        x["risk_scope"] += 0.30
+        x["additions"] = float(x["additions"] * rng.uniform(1.45, 1.95) + rng.uniform(30.0, 120.0))
+        x["deletions"] = float(x["deletions"] * rng.uniform(1.35, 1.85) + rng.uniform(20.0, 100.0))
+        x["changed_files"] = float(x["changed_files"] * rng.uniform(1.2, 1.55) + rng.uniform(1.0, 3.5))
+        x["risk_scope"] += rng.uniform(0.14, 0.32)
     elif kind == "arch_boundary":
-        x["cross_module_ratio"] = min(1.0, x["cross_module_ratio"] + 0.28)
-        x["interface_stress_mean"] = min(10.0, x["interface_stress_mean"] + 0.9)
-        x["cochange_cross_module_ratio_mean"] = min(1.0, x["cochange_cross_module_ratio_mean"] + 0.22)
-        x["risk_scope"] += 0.24
+        x["cross_module_ratio"] = min(1.0, x["cross_module_ratio"] + rng.uniform(0.14, 0.30))
+        x["interface_stress_mean"] = min(10.0, x["interface_stress_mean"] + rng.uniform(0.35, 1.0))
+        x["cochange_cross_module_ratio_mean"] = min(1.0, x["cochange_cross_module_ratio_mean"] + rng.uniform(0.10, 0.24))
+        x["risk_scope"] += rng.uniform(0.12, 0.26)
     elif kind == "ownership_friction":
-        x["ownership_friction_mean"] = min(1.0, x["ownership_friction_mean"] + 0.27)
-        x["distinct_authors_mean"] = min(30.0, x["distinct_authors_mean"] + 3.0)
-        x["requested_reviewers_count"] = float(x["requested_reviewers_count"] + 1.0)
-        x["risk_scope"] += 0.22
+        x["ownership_friction_mean"] = min(1.0, x["ownership_friction_mean"] + rng.uniform(0.10, 0.28))
+        x["distinct_authors_mean"] = min(30.0, x["distinct_authors_mean"] + rng.uniform(1.0, 3.5))
+        x["requested_reviewers_count"] = float(x["requested_reviewers_count"] + rng.uniform(0.0, 2.0))
+        x["risk_scope"] += rng.uniform(0.08, 0.24)
     return x
 
 
@@ -315,7 +330,7 @@ def _feature_vector(c: dict) -> np.ndarray:
     return arr
 
 
-def _build_candidate_pack(base: dict) -> list[dict]:
+def _build_candidate_pack(base: dict, rng: random.Random) -> list[dict]:
     kinds = [
         "real",
         "naming_drift",
@@ -324,10 +339,11 @@ def _build_candidate_pack(base: dict) -> list[dict]:
         "arch_boundary",
         "ownership_friction",
     ]
+    labels = ["cand_A", "cand_B", "cand_C", "cand_D", "cand_E", "cand_F"]
+    rng.shuffle(labels)
     out = []
-    for k in kinds:
-        c = _candidate_features(base, k)
-        cid = f"cand_{k}"
+    for k, cid in zip(kinds, labels):
+        c = _candidate_features(base, k, rng)
         c["candidate_id"] = cid
         c["label"] = 1 if k == "real" else 0
         out.append(c)
@@ -387,11 +403,11 @@ async def _coder_pick(
                 cand = str(obj.get("best_candidate", "")).strip()
             else:
                 cand = raw.strip().split()[0]
-            if cand.startswith("cand_"):
+            if cand in {"cand_A", "cand_B", "cand_C", "cand_D", "cand_E", "cand_F"}:
                 return cand
         except Exception:
             await asyncio.sleep(0.05)
-    return "cand_real"
+    return "cand_A"
 
 
 def _rank_metrics(packs: list[dict], pred_key: str) -> dict:
@@ -416,6 +432,35 @@ def _rank_metrics(packs: list[dict], pred_key: str) -> dict:
     }
 
 
+def _fit_swe_ranker(train_packs: list[dict], seed: int) -> tuple[StandardScaler, LogisticRegression]:
+    X_tr, y_tr = [], []
+    for p in train_packs:
+        for c in p["candidates"]:
+            X_tr.append(_feature_vector(c))
+            y_tr.append(int(c["label"]))
+    X_tr = np.asarray(X_tr, dtype=np.float32)
+    y_tr = np.asarray(y_tr, dtype=np.int32)
+    sc = StandardScaler()
+    X_tr_s = sc.fit_transform(X_tr)
+    clf = LogisticRegression(
+        C=1.0,
+        max_iter=1000,
+        class_weight="balanced",
+        solver="lbfgs",
+        random_state=seed,
+    )
+    clf.fit(X_tr_s, y_tr)
+    return sc, clf
+
+
+def _score_swe(packs: list[dict], sc: StandardScaler, clf: LogisticRegression) -> None:
+    for p in packs:
+        X = np.asarray([_feature_vector(c) for c in p["candidates"]], dtype=np.float32)
+        s = clf.predict_proba(sc.transform(X))[:, 1]
+        for c, v in zip(p["candidates"], s):
+            c["swe_score"] = float(v)
+
+
 async def _run_coder(packs: list[dict], model_cfg: dict, concurrency: int) -> None:
     base = model_cfg["litellm_params"]["api_base"].rstrip("/")
     if not base.endswith("/v1"):
@@ -437,7 +482,15 @@ async def _run_coder(packs: list[dict], model_cfg: dict, concurrency: int) -> No
             if done % 20 == 0 or done == len(packs):
                 print(f"  coder scored [{done}/{len(packs)}]", flush=True)
 
-    await asyncio.gather(*[one(p) for p in packs])
+    try:
+        await asyncio.gather(*[one(p) for p in packs])
+    finally:
+        # Ensure HTTP resources are closed before loop teardown.
+        close_fn = getattr(client, "close", None)
+        if close_fn is not None:
+            maybe = close_fn()
+            if asyncio.iscoroutine(maybe):
+                await maybe
 
 
 def _write_candidates(path: str, packs: list[dict]) -> None:
@@ -456,7 +509,7 @@ def _write_report(path: str, payload: dict) -> None:
     lines = [
         "# Experiment 4.6: SWE-JEPA PR Review Reranking",
         "",
-        f"**Date**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+        f"**Date**: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         f"**Packs**: {payload['n_test_packs']} test packs (6 candidates each)",
         f"**Coder model**: {payload['coder_model_name']}",
         f"**Coder concurrency**: {payload['coder_concurrency']}",
@@ -491,6 +544,20 @@ def _write_report(path: str, payload: dict) -> None:
 
     lines += [
         "",
+        "## Robustness",
+        "",
+    ]
+    cv = payload.get("cv5")
+    if cv:
+        lines += [
+            f"- 5-fold Group CV (by repo): SWE Top-1 {100*cv['swe_top1_mean']:.1f}% ± {100*cv['swe_top1_std']:.1f}, "
+            f"Coder Top-1 {100*cv['coder_top1_mean']:.1f}% ± {100*cv['coder_top1_std']:.1f}",
+            f"- 5-fold Group CV (by repo): SWE MRR {100*cv['swe_mrr_mean']:.1f}% ± {100*cv['swe_mrr_std']:.1f}, "
+            f"Coder MRR {100*cv['coder_mrr_mean']:.1f}% ± {100*cv['coder_mrr_std']:.1f}",
+            "",
+        ]
+    lines += [
+        "",
         "## Notes",
         "",
         "- `total_comments`/`total_review_threads` are included as pragmatic metadata proxies and may contain partial outcome leakage.",
@@ -515,6 +582,8 @@ def main():
     ap.add_argument("--test-frac", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--coder-concurrency", type=int, default=500)
+    ap.add_argument("--max-per-repo", type=int, default=1)
+    ap.add_argument("--cv-folds", type=int, default=5)
     ap.add_argument("--skip-coder", action="store_true")
     args = ap.parse_args()
 
@@ -532,7 +601,7 @@ def main():
     rows = _fetch_merged_prs(limit_pool=args.pool_size)
     print(f"  merged PR rows: {len(rows):,}", flush=True)
 
-    # One PR per repo for cleaner split diversity.
+    # Sample PR anchors with bounded per-repo count.
     by_repo = defaultdict(list)
     for r in rows:
         by_repo[r.repo].append(r)
@@ -541,11 +610,15 @@ def main():
 
     selected = []
     for repo in repos:
-        if not by_repo[repo]:
+        pool = by_repo[repo]
+        if not pool:
             continue
-        selected.append(rng.choice(by_repo[repo]))
+        rng.shuffle(pool)
+        take_n = min(args.max_per_repo, len(pool))
+        selected.extend(pool[:take_n])
         if len(selected) >= args.packs:
             break
+    selected = selected[: args.packs]
     print(f"  selected PR anchors: {len(selected):,}", flush=True)
     if len(selected) < 40:
         raise ValueError("Too few PR anchors selected; increase --pool-size or lower filters.")
@@ -556,7 +629,7 @@ def main():
         if not files:
             continue
         base = _featurize_row(r, files, org_file_stats, org_repo_defaults)
-        cands = _build_candidate_pack(base)
+        cands = _build_candidate_pack(base, rng)
         pack = {
             "pack_id": f"{r.repo}#{r.pull_number}",
             "repo": r.repo,
@@ -567,7 +640,7 @@ def main():
         packs.append(pack)
     print(f"  valid packs: {len(packs):,}", flush=True)
 
-    # Repo split
+    # Holdout split
     pack_repos = sorted({p["repo"] for p in packs})
     rng.shuffle(pack_repos)
     n_test_repos = max(1, int(len(pack_repos) * args.test_frac))
@@ -576,31 +649,9 @@ def main():
     test_packs = [p for p in packs if p["repo"] in test_repos]
     print(f"  split: {len(train_packs):,} train packs / {len(test_packs):,} test packs", flush=True)
 
-    # Train SWE-JEPA-Conway lightweight head
-    X_tr, y_tr = [], []
-    for p in train_packs:
-        for c in p["candidates"]:
-            X_tr.append(_feature_vector(c))
-            y_tr.append(int(c["label"]))
-    X_tr = np.asarray(X_tr, dtype=np.float32)
-    y_tr = np.asarray(y_tr, dtype=np.int32)
-    sc = StandardScaler()
-    X_tr_s = sc.fit_transform(X_tr)
-    clf = LogisticRegression(
-        C=1.0,
-        max_iter=1000,
-        class_weight="balanced",
-        solver="lbfgs",
-        random_state=args.seed,
-    )
-    clf.fit(X_tr_s, y_tr)
-
-    # Score test packs with SWE-JEPA-Conway scorer
-    for p in test_packs:
-        X = np.asarray([_feature_vector(c) for c in p["candidates"]], dtype=np.float32)
-        s = clf.predict_proba(sc.transform(X))[:, 1]
-        for c, v in zip(p["candidates"], s):
-            c["swe_score"] = float(v)
+    # Train and score holdout SWE-JEPA-Conway
+    sc, clf = _fit_swe_ranker(train_packs, args.seed)
+    _score_swe(test_packs, sc, clf)
 
     if args.skip_coder:
         print("Skipping coder-model scoring (--skip-coder)", flush=True)
@@ -618,8 +669,59 @@ def main():
     swe_metrics = _rank_metrics(test_packs, "swe_score")
     coder_metrics = _rank_metrics(test_packs, "coder_score")
 
+    # 5-fold grouped CV over all packs
+    cv_payload = None
+    if args.cv_folds and args.cv_folds >= 2 and len(packs) >= args.cv_folds:
+        print(f"Running {args.cv_folds}-fold Group CV (repo-grouped) …", flush=True)
+        groups = np.array([p["repo"] for p in packs])
+        idx = np.arange(len(packs))
+        gkf = GroupKFold(n_splits=args.cv_folds)
+        fold_rows = []
+        for fold_i, (tr_idx, te_idx) in enumerate(gkf.split(idx, groups=groups), start=1):
+            tr = [packs[i] for i in tr_idx.tolist()]
+            te = [packs[i] for i in te_idx.tolist()]
+            sc_f, clf_f = _fit_swe_ranker(tr, args.seed + fold_i)
+            _score_swe(te, sc_f, clf_f)
+            if args.skip_coder:
+                for p in te:
+                    top = max(p["candidates"], key=lambda c: float(c["swe_score"]))["candidate_id"]
+                    for c in p["candidates"]:
+                        c["coder_score"] = 1.0 if c["candidate_id"] == top else 0.0
+            else:
+                model_cfg = _read_model_cfg(args.model_name)
+                asyncio.run(_run_coder(te, model_cfg, args.coder_concurrency))
+            ms = _rank_metrics(te, "swe_score")
+            mc = _rank_metrics(te, "coder_score")
+            fold_rows.append(
+                {
+                    "fold": fold_i,
+                    "n_test_packs": len(te),
+                    "swe_top1": ms["top1"],
+                    "swe_mrr": ms["mrr"],
+                    "coder_top1": mc["top1"],
+                    "coder_mrr": mc["mrr"],
+                }
+            )
+            print(
+                f"  fold {fold_i}/{args.cv_folds}: "
+                f"swe_top1={100*ms['top1']:.1f}% coder_top1={100*mc['top1']:.1f}%",
+                flush=True,
+            )
+
+        cv_payload = {
+            "folds": fold_rows,
+            "swe_top1_mean": float(np.mean([r["swe_top1"] for r in fold_rows])),
+            "swe_top1_std": float(np.std([r["swe_top1"] for r in fold_rows])),
+            "swe_mrr_mean": float(np.mean([r["swe_mrr"] for r in fold_rows])),
+            "swe_mrr_std": float(np.std([r["swe_mrr"] for r in fold_rows])),
+            "coder_top1_mean": float(np.mean([r["coder_top1"] for r in fold_rows])),
+            "coder_top1_std": float(np.std([r["coder_top1"] for r in fold_rows])),
+            "coder_mrr_mean": float(np.mean([r["coder_mrr"] for r in fold_rows])),
+            "coder_mrr_std": float(np.std([r["coder_mrr"] for r in fold_rows])),
+        }
+
     payload = {
-        "date_utc": datetime.utcnow().isoformat(),
+        "date_utc": datetime.now(UTC).isoformat(),
         "args": vars(args),
         "n_train_packs": len(train_packs),
         "n_test_packs": len(test_packs),
@@ -629,6 +731,7 @@ def main():
             "swe_jepa_conway": swe_metrics,
             "coder_model": coder_metrics,
         },
+        "cv5": cv_payload,
         "elapsed_sec": time.time() - t0,
     }
 
