@@ -107,6 +107,81 @@ quality ranking (which candidate's design pattern historically accumulates less 
 debt). Together they instantiate the full SE design loop — generate diverse options, then
 select the one that minimises long-run cost.
 
+### Research Lineage Diagram
+
+The diagram below traces the progression from isolated function correctness to longitudinal
+codebase quality. Solid arrows show the evolution of the evaluation objective; dashed arrows
+show conceptual influence across paradigms. Node colour encodes role: blue = foundational
+benchmarks, orange = static-only methods with identified gaps, green = SWE-JEPA
+contributions, yellow = external steering paradigm (ThinkLogit).
+
+```mermaid
+graph TD
+    A["① Function-Level Correctness
+    HumanEval · MBPP · APPS
+    Metric: pass@k
+    Input: isolated function spec + unit test"]
+
+    B["② Repo-Level Patch Quality
+    SWE-Bench · SWE-agent · OpenHands
+    Metric: % issues resolved
+    Scaffold: bash · file editor · test runner
+    ── without tool access, defects compound ──"]
+
+    C["③ Architecture-Aware Generation
+    RAIM 2026
+    Metric: module-fit of N design candidates
+    Input: repo dependency graph + ownership
+    ⚠ static snapshot — no temporal signal"]
+
+    D["④ Organizational Awareness
+    Conway 1968 · Exp 4.5
+    Metric: ownership friction · interface stress
+    Input: git history · team co-change graph
+    ⚠ static org snapshot — no longitudinal outcome"]
+
+    E["⑤ Longitudinal Quality  ·  SWE-JEPA
+    followups_function: feature PR → bugfix chains
+    JEPA latents: sig predicts body structure
+    Exp 4.1–4.3: defect + feature-ext localisation
+    Metric: followup-debt risk  ·  SPE outcomes"]
+
+    TL["ThinkLogit 2025
+    logit-delta: small guider steers large target
+    no retraining of target  ·  1.5B guides 32B
+    eval: Avg@8 · pass@k · mixed-strength pairs"]
+
+    F["Exp 5.1  ·  RL Steerer
+    SE-quality delta  ·  no coder SFT
+    offline RL on historical PR trajectories
+    SPE-aware trajectory guidance"]
+
+    A -->|"add repo context + tool-calling scaffold"| B
+    B -->|"add static module structure + dep graph"| C
+    C -->|"add organizational + ownership layer"| D
+    D -->|"add temporal codebase evolution"| E
+    E --> F
+
+    TL -.->|"generalise:\nlogit-delta → action-delta"| F
+    C -.->|"gap: no longitudinal\nquality signal\n→ filled by followups_function"| E
+
+    style A fill:#dce6f1,stroke:#4472c4
+    style B fill:#dce6f1,stroke:#4472c4
+    style C fill:#fce4d6,stroke:#c55a11
+    style D fill:#fce4d6,stroke:#c55a11
+    style E fill:#e2efda,stroke:#538135
+    style F fill:#e2efda,stroke:#538135
+    style TL fill:#fff2cc,stroke:#bf9000
+```
+
+*Reading the diagram*: The five levels represent increasing maturity of what "SE quality" means to an
+evaluator. Level 1–2 test whether code is correct now. Level 3–4 test whether it fits the
+current architecture and organisation. Level 5 (SWE-JEPA) tests whether it will remain
+maintainable over time — the open question that neither existing benchmarks nor RAIM's static
+architecture analysis can answer. The parallel between removing debugging tools from a scaffold
+(level 2) and removing arch/org awareness from a planner (level 3–4) motivates why longitudinal
+context is structurally necessary, not cosmetic, for full-fledged SE tasks.
+
 ---
 
 ## Architecture Overview
