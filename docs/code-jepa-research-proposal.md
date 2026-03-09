@@ -67,6 +67,46 @@ SALT demonstrates that for video representation learning:
 - **No collapse risk**: Because the teacher is frozen, the target space is fixed. No EMA scheduling, no stop-gradient tricks, no representation collapse.
 - **Structural masking**: Masking is defined by code semantics (AST boundaries), not arbitrary token spans.
 
+### Positioning vs Adjacent Paradigms: ThinkLogit and RAIM
+
+**ThinkLogit: the small-guides-large paradigm at the token level**
+
+ThinkLogit (Zhang et al., 2025; arXiv:2510.09354) shows that a 1.5B guider trained for long
+chain-of-thought reasoning can steer a 32B target model at inference time by injecting the
+*reasoning delta* (`logit_guider − logit_guider_base`) at each decoding step — with zero
+retraining of the target, achieving a 26-29% relative improvement in pass@1 on AIME/AMC
+benchmarks. SWE-JEPA generalises this principle upward: instead of a logit-level reasoning
+delta, a small steerer supplies an *SE-quality delta* at the trajectory/action level, guiding
+the coder's design decisions without SFT of the large backbone.
+
+The analogy clarifies why the organisational/architectural context matters structurally, not
+cosmetically. Consider an agent with no debugging tools in its scaffold: it can write
+syntactically valid code but cannot validate correctness step by step, so defects compound.
+Removing architectural/organisational awareness imposes the same constraint on long-horizon SE
+tasks — full-feature implementation, module-boundary refactoring, API evolution — because the
+agent has no mechanism to detect that a locally reasonable design will cause recurring failures
+or cross-team friction downstream. This is the domain of **Software Performance Engineering
+(SPE)**: optimising for longitudinal quality metrics, not just immediate functional
+correctness. SWE-JEPA provides the signal that makes SPE-aware steering tractable.
+
+**RAIM: architecture-aware generation without longitudinal quality**
+
+RAIM (Liu et al., 2026; arXiv:2603.01814) generates multiple architecture-consistent design
+proposals for repository-level feature additions, ranking candidates by fit to the current
+module structure, dependency graph, and ownership layout. This is directly relevant to the
+agentic PR-evolution setting: rather than one-shot code generation, RAIM produces a
+*candidate set* with explicit architectural diversity.
+
+However, RAIM's ranking signal is fundamentally **static**: it cannot predict which design
+choice will accumulate followup debt — recurring bugfixes, refactor churn, review friction
+months after merge. SWE-JEPA's `followups_function` dataset captures exactly this temporal
+dimension: the historical chain from feature PR implementation → followup bugfixes → feature
+extensions. The two approaches are complementary in a principled way: RAIM provides design
+diversity (multiple architecture-consistent candidates); SWE-JEPA provides longitudinal
+quality ranking (which candidate's design pattern historically accumulates less maintenance
+debt). Together they instantiate the full SE design loop — generate diverse options, then
+select the one that minimises long-run cost.
+
 ---
 
 ## Architecture Overview
@@ -391,6 +431,8 @@ Sensitivity: repeat with hunk_overlap_fraction > 0.1 (strict) vs any overlap (le
 
 ## Key References
 
+- **ThinkLogit**: Zhang et al., "Logit Arithmetic Elicits Long Reasoning Capabilities Without Training" (arxiv:2510.09354, 2025)
+- **RAIM**: Liu et al., "Architecture-Aware Multi-Design Generation for Repository-Level Feature Addition" (arXiv:2603.01814, 2026) — Generates multiple architecture-consistent design candidates for repo-level feature additions; SWE-JEPA provides the longitudinal quality signal (followup-debt risk) that RAIM's static architecture ranking lacks
 - **SALT**: Li et al., "Rethinking JEPA: Compute-Efficient Video SSL with Frozen Teachers" (arxiv:2509.24317, 2025)
 - **V-JEPA**: Bardes et al., "Revisiting Feature Prediction for Learning Visual Representations from Video" (2024)
 - **I-JEPA**: Assran et al., "Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture" (2023)

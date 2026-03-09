@@ -533,3 +533,147 @@ Efficiency:
 | Median review rounds to acceptance | reduced |
 | Refactor-demand incidence after submission | reduced |
 | Steerer training cost | substantially below full coder SFT |
+
+### Experiment 5.1 — RL on Steerer (Conway-Aware State Policy)
+
+#### Motivation
+
+Shift optimization from expensive token-level RL on the large coder to cheap RL on a
+small steerer that predicts/improves **software-engineering state transitions**:
+mergeability, review friction, refactor-demand risk, and architecture/ownership stress.
+
+This tests the core thesis: high-level state-policy learning can deliver practical SE gains
+without brute-force RL + sandboxing on the full code model.
+
+**RAIM complementarity**: RAIM [arXiv:2603.01814] generates architecture-aware multi-design
+candidates for repo-level feature additions by selecting among proposals using current module
+structure and dependency graphs. This is powerful for local architectural consistency but is
+fundamentally **static**: it ranks candidates by fit to the current codebase snapshot and
+cannot predict which design choice will accumulate followup debt — repeated bugfixes, refactor
+churn, review friction months later. The Exp 5.1 steerer is the longitudinal complement: it
+ranks candidate trajectories by predicted followup-debt risk, providing the temporal dimension
+static architecture analysis cannot reach. Together RAIM handles design diversity; SWE-JEPA
+handles longitudinal quality selection.
+
+**Why this matters for SPE**: An agent without architectural/organizational context is
+analogous to an agent with no debugging tools in its scaffold — it can produce syntactically
+valid code but has no mechanism to detect that the design will cause recurring failures
+downstream. Just as removing tool-call access (bash, test runners) cripples an agent's ability
+to validate correctness step by step, removing arch/org context cripples its ability to plan
+for long-horizon SE tasks: full-feature implementation, refactoring at module boundaries, API
+evolution. Having this context is the difference between a patch that closes an issue once and
+a design that prevents the class of issue from recurring — the central concern of **Software
+Performance Engineering (SPE)**.
+
+#### Core hypothesis
+
+Training a compact steerer with RL over PR/review state transitions yields better
+agentic outcomes than static supervised steering alone, while retaining low training cost.
+
+#### State/action/reward design
+
+State channels (per trajectory step):
+- PR/code scope: changed files, churn, cross-module spread
+- Review signals: thread count, unresolved threads, refactor-request likelihood
+- Conway proxies: ownership friction, interface stress, socio-technical alignment
+- Runtime progress: tests attempted/passed, regression indicators
+- **Longitudinal followup risk**: predicted followup-debt score from the Exp 4.3 region
+  localization probe — probability that functions modified in this PR will be revisited in
+  bugfix or feature-extension PRs, based on their JEPA signature embeddings. This is the
+  signal RAIM lacks and the unique SWE-JEPA contribution to the state space. Note: quantifying
+  this signal precisely is itself part of the research question; the Exp 4.3 probe provides a
+  practical operational proxy while the reward design for dense, step-level steering remains
+  open.
+
+Steerer actions (policy outputs):
+- steer hints and retry policy (scope tighten / split / naming/API consistency / test focus)
+- attempt acceptance thresholding and reranking among candidate attempts
+
+Reward (dense + terminal):
+- positive: merge-likelihood increase, friction decrease, patch completion
+- negative: rising refactor-risk, excessive scope drift, repeated stalled loops
+- terminal: accepted-like proxy score, low-friction completion, or timeout/failure penalty
+
+#### Signals to test (ablation matrix)
+
+Train multiple steerer variants and compare:
+1. `review-only` signals
+2. `conway-only` signals (ownership friction + interface stress)
+3. `review + conway` combined
+4. `review + conway + jepa_latent` (full)
+
+Goal: identify which proxies carry the strongest causal steering utility.
+
+#### ThinkLogit-informed evaluation protocol
+
+**Paradigm-level connection**: ThinkLogit (arXiv:2510.09354) proves that a small guider's
+*reasoning delta* — `logit_guider − logit_guider_base` — can steer a large target model
+without retraining the target, improving pass@1 by 26-29% using a 1.5B guider on a 32B
+target. Exp 5.1 extends this principle one level of abstraction higher: a small steerer's
+*SE-quality delta* guides the large coder's action distribution without SFT. The coder knows
+how to write code; the steerer knows which design choices accumulate longitudinal debt. The
+open methodological question this creates — what is the steerer-equivalent of ThinkLogit's
+base-logit subtraction that isolates the SE-quality signal from the coder's unsteered
+distribution? — is itself a contribution of this experiment.
+
+Following ThinkLogit methodology, adapt success criteria to PR-agent runs:
+
+1. Multi-sample metrics (`Avg@N` / `Pass@k` style):
+   - For each PR task, run N attempts (e.g., N=8).
+   - Report:
+     - `Avg@8`: mean judge/proxy score across 8 attempts
+     - `Patch@k`: whether any of top-k attempts produces non-empty valid patch
+     - `AcceptProxy@k`: whether any of top-k reaches acceptance threshold
+
+2. Sample efficiency curves:
+   - x-axis: number of rollouts/attempts
+   - y-axis: `AcceptProxy@k` or judge win-rate
+   - Compare baseline vs steered to quantify efficiency gain.
+
+3. Stability sweeps:
+   - sweep steerer strength / threshold / warmup ratio (analogous to ThinkLogit control sweeps)
+   - report mean ± std across seeds.
+
+4. Pair-quality ablation for offline preference tuning:
+   - Build preference pairs from target-only vs steered attempts.
+   - Compare:
+     - target-only pairs
+     - steerer-only pairs
+     - mixed-strength pairs (expected strongest, consistent with ThinkLogit finding)
+
+#### Experimental setup
+
+- Fixed cohort: current 7k baseline subset (same PR keys).
+- Agent scaffold: mini-swe-agent, same tools/model/timeouts.
+- Compare:
+  1. baseline prompt-only
+  2. supervised steerer (Exp 4.7)
+  3. RL steerer (Exp 5.1)
+
+#### Implementation plan
+
+1. `build_pr_mdp_dataset_v51.py`
+   - add Conway proxy channels and transition rewards
+2. `train_pr_steerer_rl_v51.py`
+   - PPO/REINFORCE-style lightweight RL on steerer only
+   - checkpoint + policy diagnostics
+3. `run_phase5_1_agentic_eval.py`
+   - multi-attempt evaluation with `Avg@8`/`Patch@k`/`AcceptProxy@k`
+4. `analyze_phase5_1_signals.py`
+   - proxy/signal usefulness ablations and sensitivity plots
+5. report:
+   - `docs/phase5_1_rl_steerer_conway.md`
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| RL steerer > supervised steerer on `AcceptProxy@1` | +3 pp absolute |
+| RL steerer > baseline on `AcceptProxy@k` (k=3,5,8) | consistent wins |
+| Better sample efficiency (same quality with fewer attempts) | clear curve separation |
+| `review + conway` > `review-only` and `conway-only` | validates proxy complementarity |
+| Training cost | far below full-model RL/SFT |
+
+#### References
+
+- ThinkLogit: https://arxiv.org/abs/2510.09354

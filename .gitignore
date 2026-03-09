@@ -3,4 +3,9 @@ postgres_connection.yaml
 __pycache__
 .venv
 .claude
+checkpoints
 faiss_indices
+data/phase*
+data/_trash*
+data/*.patch
+unshallow_repos_test/*.jsonl

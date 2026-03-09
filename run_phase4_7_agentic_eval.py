@@ -8,7 +8,7 @@ import random
 import shutil
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,9 +21,10 @@ MODELS_YAML = os.path.join(ROOT, "models.yaml")
 TOKENS_YAML = os.path.join(ROOT, "crawl_tokens.yaml")
 
 REPOS_BASE = "/shared_workspace_mfs/repos"
-OVERLAY_MERGED_BASE = "/shared_workspace_mfs/repos_tmp_overlayfs"
+TMP_EXEC_BASE = "/work/repos_tmp_worktrees"
+OVERLAY_MERGED_BASE = os.path.join(TMP_EXEC_BASE, "overlay_merged")
 OVERLAY_SHM_BASE = "/dev/shm"
-WORKTREE_BASE = "/shared_workspace_mfs/repos_tmp_worktrees"
+WORKTREE_BASE = os.path.join(TMP_EXEC_BASE, "worktrees")
 
 MINI_SRC = os.path.join(ROOT, "agentic_scaffold", "mini-swe-agent", "src")
 MINI_CFG = os.path.join(MINI_SRC, "minisweagent", "config", "mini.yaml")
@@ -139,11 +140,10 @@ def _normalize_api_base(base: str) -> str:
     return b
 
 
-def _fetch_tasks(limit: int, seed: int) -> list[dict]:
+def _fetch_tasks(limit: int, seed: int, pr_category: str | None, source_multiplier: int) -> list[dict]:
     db = _load_pg_cfg()
     conn = pg8000.native.Connection(**db)
-    rows = conn.run(
-        """
+    q = """
         SELECT
             repo, instance_id, pull_number, base_sha, pr_title, pr_body,
             problem_statement, hints_text, changed_files, additions, deletions,
@@ -153,20 +153,35 @@ def _fetch_tasks(limit: int, seed: int) -> list[dict]:
           AND base_sha IS NOT NULL
           AND patch IS NOT NULL
           AND changed_files BETWEEN 1 AND 60
-        ORDER BY created_at DESC
         LIMIT :lim
-        """,
-        lim=limit * 6,
-    )
+        """
+    params = {"lim": max(limit * max(1, source_multiplier), limit)}
+    if pr_category:
+        q = q.replace("WHERE pr_merged = TRUE", "WHERE pr_merged = TRUE AND pr_category = :cat")
+        params["cat"] = pr_category
+    rows = conn.run(q, **params)
     conn.close()
     out = []
+    seen: set[tuple] = set()
     for r in rows:
+        repo = r[0]
+        instance_id = r[1]
+        pull_number = int(r[2] or 0)
+        base_sha = r[3]
+        # Prefer unique PR identity; fallback to sha+instance when pull number is missing.
+        if pull_number > 0:
+            key = ("pr", repo, pull_number)
+        else:
+            key = ("sha", repo, base_sha, instance_id)
+        if key in seen:
+            continue
+        seen.add(key)
         out.append(
             {
-                "repo": r[0],
-                "instance_id": r[1],
-                "pull_number": int(r[2] or 0),
-                "base_sha": r[3],
+                "repo": repo,
+                "instance_id": instance_id,
+                "pull_number": pull_number,
+                "base_sha": base_sha,
                 "pr_title": r[4] or "",
                 "pr_body": (r[5] or "")[:2000],
                 "problem_statement": (r[6] or "")[:2000],
@@ -179,7 +194,51 @@ def _fetch_tasks(limit: int, seed: int) -> list[dict]:
             }
         )
     random.Random(seed).shuffle(out)
-    return out[:limit]
+    for i, t in enumerate(out):
+        t["_task_idx"] = i
+    return out
+
+
+def _load_existing_patched(existing_jsonl: str | None) -> set[tuple]:
+    if not existing_jsonl or not os.path.exists(existing_jsonl):
+        return set()
+    keys: set[tuple] = set()
+    with open(existing_jsonl) as f:
+        for ln in f:
+            try:
+                r = json.loads(ln)
+            except Exception:
+                continue
+            if not r.get("has_patch", False):
+                continue
+            repo = r.get("repo")
+            pull = int(r.get("pull_number") or 0)
+            inst = r.get("instance_id")
+            if not repo:
+                continue
+            if pull > 0:
+                keys.add(("pr", repo, pull))
+            elif inst:
+                keys.add(("inst", repo, inst))
+    return keys
+
+
+def _is_internal_server_error_result(row: dict) -> bool:
+    buf = " ".join(
+        [
+            str(row.get("reason", "")),
+            str(row.get("stderr_tail", "")),
+            str(row.get("stdout_tail", "")),
+            str(row.get("exit_status", "")),
+        ]
+    ).lower()
+    if "internalservererror" in buf:
+        return True
+    if "internal server error" in buf:
+        return True
+    if "status code: 500" in buf or "status_code\": 500" in buf or "status_code': 500" in buf:
+        return True
+    return False
 
 
 def _task_prompt(t: dict) -> str:
@@ -205,6 +264,7 @@ def _run_one_task(
     repo_dirs: dict[str, str],
     tokens: list[str],
     out_traj_dir: str,
+    out_patch_dir: str,
     mini_step_limit: int,
     timeout_sec: int,
     agent_python: str,
@@ -217,7 +277,7 @@ def _run_one_task(
     if not repo_dir:
         return {"repo": repo, "instance_id": t["instance_id"], "status": "missing_repo"}
 
-    tag = f"p47_{abs(hash((repo, t['instance_id']))) % (10**12)}"
+    tag = f"p47_{t.get('_task_idx', 0)}_{abs(hash((repo, t['pull_number'], t['base_sha'], t['instance_id']))) % (10**12)}"
     merged = upper = work = None
     workspace_method = ""
     t0 = time.time()
@@ -255,7 +315,9 @@ def _run_one_task(
             }
 
         os.makedirs(out_traj_dir, exist_ok=True)
-        traj = os.path.join(out_traj_dir, f"{t['instance_id']}.traj.json")
+        os.makedirs(out_patch_dir, exist_ok=True)
+        traj = os.path.join(out_traj_dir, f"{t['instance_id']}__pr{t['pull_number']}.traj.json")
+        patch_path = os.path.join(out_patch_dir, f"{t['instance_id']}__pr{t['pull_number']}.patch")
         base_url = _normalize_api_base(api_base_override or model_cfg["litellm_params"]["api_base"])
         api_key = api_key_override or model_cfg["litellm_params"]["api_key"]
         # mini-swe-agent uses litellm directly, so model name must include provider prefix
@@ -319,6 +381,13 @@ def _run_one_task(
         files = [ln.strip() for ln in gd.stdout.splitlines() if ln.strip()] if gd.returncode == 0 else []
         out["changed_files_after"] = len(files)
         out["changed_files_list_head"] = files[:20]
+        gp = subprocess.run(["git", "-c", "safe.directory=*", "-C", merged, "diff", "--binary"], capture_output=True, text=True)
+        patch_text = gp.stdout if gp.returncode == 0 else ""
+        with open(patch_path, "w") as pf:
+            pf.write(patch_text)
+        out["patch_path"] = patch_path
+        out["patch_chars"] = len(patch_text)
+        out["has_patch"] = len(patch_text.strip()) > 0
 
         if out["traj_path"]:
             try:
@@ -355,33 +424,96 @@ def main():
     ap.add_argument("--api-key", default=None, help="Override model api_key from models.yaml")
     ap.add_argument("--litellm-model", default=None, help="Override model id/name used by litellm")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--pr-category", default=None, help="Optional prs_copy.pr_category filter (e.g. feature)")
+    ap.add_argument(
+        "--skip-existing-patched-jsonl",
+        default=None,
+        help="Skip tasks whose PR already has has_patch=true in this JSONL",
+    )
+    ap.add_argument(
+        "--source-multiplier",
+        type=int,
+        default=20,
+        help="How many source rows to sample relative to --limit before filtering",
+    )
     ap.add_argument("--out-jsonl", default=OUT_JSONL)
     ap.add_argument("--out-summary", default=OUT_SUMMARY)
-    ap.add_argument("--traj-dir", default=os.path.join(ROOT, "docs", "phase4_7_trajectories"))
+    ap.add_argument("--append-out", action="store_true", help="Append to existing out-jsonl instead of overwriting")
+    ap.add_argument(
+        "--circuit-breaker-internal-server-errors",
+        type=int,
+        default=10,
+        help="Stop scheduling new tasks if InternalServerError count exceeds this threshold (<=0 disables)",
+    )
+    ap.add_argument("--traj-dir", default=os.path.join(ROOT, "data", "phase4_7_trajectories"))
+    ap.add_argument("--patch-dir", default=os.path.join(ROOT, "data", "phase4_7_patches"))
     args = ap.parse_args()
 
     t0 = time.time()
     model_cfg = _load_model_cfg(args.model_name)
     repo_dirs = _repo_dir_map()
     tokens = _load_tokens()
-    tasks = _fetch_tasks(args.limit, args.seed)
+    tasks = _fetch_tasks(args.limit, args.seed, args.pr_category, args.source_multiplier)
+    before_repo = len(tasks)
     tasks = [t for t in tasks if t["repo"] in repo_dirs]
-    print(f"tasks selected: {len(tasks)} (requested={args.limit})", flush=True)
+    skipped_repo = before_repo - len(tasks)
+    patched_keys = _load_existing_patched(args.skip_existing_patched_jsonl)
+    skipped_existing = 0
+    if patched_keys:
+        kept = []
+        for t in tasks:
+            repo = t["repo"]
+            pull = int(t.get("pull_number") or 0)
+            inst = t.get("instance_id")
+            k = ("pr", repo, pull) if pull > 0 else ("inst", repo, inst)
+            if k in patched_keys:
+                skipped_existing += 1
+                continue
+            kept.append(t)
+        tasks = kept
+    tasks = tasks[: args.limit]
+    print(
+        f"tasks selected: {len(tasks)} (requested={args.limit})"
+        f"  skipped_repo_missing={skipped_repo}  skipped_existing_patched={skipped_existing}",
+        flush=True,
+    )
+    if args.pr_category:
+        print(f"pr_category filter: {args.pr_category}", flush=True)
     print(f"concurrency={args.concurrency}", flush=True)
 
     os.makedirs(os.path.dirname(args.out_jsonl), exist_ok=True)
     os.makedirs(args.traj_dir, exist_ok=True)
     rows = []
-    out_handle = open(args.out_jsonl, "w")
+    out_mode = "w"
+    if args.append_out and os.path.exists(args.out_jsonl):
+        out_mode = "a"
+        with open(args.out_jsonl) as f:
+            for ln in f:
+                try:
+                    rows.append(json.loads(ln))
+                except Exception:
+                    continue
+        print(f"loaded existing rows for append: {len(rows)}", flush=True)
+    out_handle = open(args.out_jsonl, out_mode)
+    total_tasks = len(tasks)
+    done = 0
+    ok_new = 0
+    internal_server_error_count = 0
+    breaker_tripped = False
     with ThreadPoolExecutor(max_workers=max(1, args.concurrency)) as ex:
-        futs = [
-            ex.submit(
+        in_flight = set()
+        next_idx = 0
+
+        def _submit_one(i: int):
+            t = tasks[i]
+            fut = ex.submit(
                 _run_one_task,
                 t,
                 model_cfg,
                 repo_dirs,
                 tokens,
                 args.traj_dir,
+                args.patch_dir,
                 args.step_limit,
                 args.timeout_sec,
                 args.agent_python,
@@ -389,18 +521,43 @@ def main():
                 args.api_key,
                 args.litellm_model,
             )
-            for t in tasks
-        ]
-        done = 0
-        for fut in as_completed(futs):
-            done += 1
-            r = fut.result()
-            rows.append(r)
-            out_handle.write(json.dumps(r) + "\n")
-            out_handle.flush()
-            if done % 10 == 0 or done == len(futs):
-                ok = sum(1 for x in rows if x.get("status") == "ok")
-                print(f"  [{done}/{len(futs)}] ok={ok}", flush=True)
+            in_flight.add(fut)
+
+        while next_idx < total_tasks and len(in_flight) < max(1, args.concurrency):
+            _submit_one(next_idx)
+            next_idx += 1
+
+        while in_flight:
+            finished, in_flight = wait(in_flight, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                done += 1
+                r = fut.result()
+                rows.append(r)
+                out_handle.write(json.dumps(r) + "\n")
+                out_handle.flush()
+                if r.get("status") == "ok":
+                    ok_new += 1
+                if _is_internal_server_error_result(r):
+                    internal_server_error_count += 1
+
+            if (
+                not breaker_tripped
+                and args.circuit_breaker_internal_server_errors > 0
+                and internal_server_error_count > args.circuit_breaker_internal_server_errors
+            ):
+                breaker_tripped = True
+                print(
+                    f"circuit breaker tripped: InternalServerError count={internal_server_error_count} "
+                    f"> threshold={args.circuit_breaker_internal_server_errors}",
+                    flush=True,
+                )
+
+            if not breaker_tripped:
+                while next_idx < total_tasks and len(in_flight) < max(1, args.concurrency):
+                    _submit_one(next_idx)
+                    next_idx += 1
+            if done % 10 == 0 or done == total_tasks:
+                print(f"  [{done}/{total_tasks}] ok={ok_new}", flush=True)
     out_handle.close()
 
     summary = {
@@ -411,6 +568,11 @@ def main():
         "ok_rate": 0.0,
         "avg_elapsed_sec": 0.0,
         "avg_changed_files_after": 0.0,
+        "internal_server_error_count": internal_server_error_count,
+        "circuit_breaker_threshold": args.circuit_breaker_internal_server_errors,
+        "circuit_breaker_tripped": breaker_tripped,
+        "new_tasks_completed": done,
+        "new_tasks_ok": ok_new,
         "elapsed_total_sec": time.time() - t0,
         "out_jsonl": args.out_jsonl,
     }
