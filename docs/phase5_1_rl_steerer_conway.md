@@ -104,7 +104,16 @@ imports reviewers scrutinize for error handling, memory behaviour, and security.
 | `error_contract_score` | `+try_catch +finally +raise_from +log_in_except +reraise − 2×bare_except − 3×except_pass` | Error handling quality: positive = careful, negative = silencing errors |
 | `security_risk_score` | `+2×shell_true +2×sql_fstring +2×eval_exec +2×pickle_loads +3×hardcoded_cred +cred_in_log` | Security anti-pattern density |
 | `operability_score` | `+2×metric_emit +log_warn_err +health_check +pool_config − 2×ext_client_no_obs − ext_client_no_log` | Observability quality: penalises external clients without monitoring |
-** Check Design by Contract/ self checking mechanisms adhereance, whether it has any bearing on PR merge outcome.
+
+> **Candidate extension — Design by Contract / self-checking mechanisms**: whether
+> assertions, precondition checks, and invariant guards (`assert`, `Preconditions.checkArgument`,
+> `Objects.requireNonNull`, Rust `debug_assert!`, property-based test annotations) predict
+> PR merge outcomes is an open question. Initial hypothesis: explicit contracts signal defensive
+> programming discipline similar to `has_try_catch`, but are confounded by language build modes
+> (`assert` is disabled in Python `-O` and Java production JVMs; Rust `debug_assert!` is stripped
+> in release builds). Soundly measuring this requires knowing the project's build configuration,
+> which is not available in `prs_copy`. Tracked as part of Exp 5.1.1 language-level confound
+> analysis; not included in the current feature set.
 
 ### Group 5: Conway binary signals (12 features)
 

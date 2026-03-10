@@ -641,39 +641,165 @@ Following ThinkLogit methodology, adapt success criteria to PR-agent runs:
      - steerer-only pairs
      - mixed-strength pairs (expected strongest, consistent with ThinkLogit finding)
 
+#### Scope clarification (ORM-only)
+
+Exp 5.1 uses the steerer as an **outcome reward model (ORM)** only — it scores the
+terminal PR state after each attempt and uses those scores for attempt reranking and
+early stopping. Step-level process rewards are out of scope for 5.1; that is addressed
+in Exp 5.2.
+
+#### Trajectory scaffold reuse
+
+Trajectories from `data/phase4_7_trajectories_feature_sl80/` (16,002 files, format
+`instance__prX__aY.traj.json`) were collected using `run_phase4_7_agentic_eval_steered.py`.
+The same mini-swe-agent scaffold and trajectory format is used for Exp 5.1 rollouts.
+The existing scaffold supports `--disable-steering` for the no-steerer baseline and
+`--steerer-model` for the Conway ORM.
+
 #### Experimental setup
 
-- Fixed cohort: current 7k baseline subset (same PR keys).
-- Agent scaffold: mini-swe-agent, same tools/model/timeouts.
+- Fixed cohort: current 7k baseline subset (same PR keys as Exp 4.7).
+- Agent scaffold: mini-swe-agent, same tools/model/timeouts as Exp 4.7.
 - Compare:
-  1. baseline prompt-only
-  2. supervised steerer (Exp 4.7)
-  3. RL steerer (Exp 5.1)
+  1. baseline prompt-only (`--disable-steering`)
+  2. supervised steerer Exp 4.7 (6-feature PR-metadata model)
+  3. Conway ORM steerer Exp 5.1 (28-feature, 100k-trained)
+- Ablations: `review-only`, `conway-only`, `review+conway` feature sets via zeroing
 
 #### Implementation plan
 
-1. `build_pr_mdp_dataset_v51.py`
-   - add Conway proxy channels and transition rewards
-2. `train_pr_steerer_rl_v51.py`
-   - PPO/REINFORCE-style lightweight RL on steerer only
-   - checkpoint + policy diagnostics
-3. `run_phase5_1_agentic_eval.py`
-   - multi-attempt evaluation with `Avg@8`/`Patch@k`/`AcceptProxy@k`
-4. `analyze_phase5_1_signals.py`
-   - proxy/signal usefulness ablations and sensitivity plots
-5. report:
-   - `docs/phase5_1_rl_steerer_conway.md`
+1. ✅ `build_pr_mdp_dataset_v51.py` — Conway proxy channels + transition rewards
+2. ✅ `train_pr_steerer_rl_v51.py` — 4 trained heads (acceptance, refactor, value, pairwise)
+3. ✅ `extract_conway_patch_features.py` — tree-sitter + regex, 28 features, 100k PRs
+4. `run_phase5_1_agentic_eval.py` — multi-attempt eval, `Avg@8`/`Patch@k`/`AcceptProxy@k`
+5. `analyze_phase5_1_signals.py` — proxy/signal ablations and sensitivity plots
+6. ✅ report: `docs/phase5_1_rl_steerer_conway.md`
 
 #### Success criteria
 
 | Criterion | Target |
 |-----------|--------|
-| RL steerer > supervised steerer on `AcceptProxy@1` | +3 pp absolute |
-| RL steerer > baseline on `AcceptProxy@k` (k=3,5,8) | consistent wins |
-| Better sample efficiency (same quality with fewer attempts) | clear curve separation |
-| `review + conway` > `review-only` and `conway-only` | validates proxy complementarity |
+| Conway ORM steerer > no-steerer baseline on `AcceptProxy@1` | +5 pp absolute |
+| Conway ORM steerer > Exp 4.7 steerer on `AcceptProxy@k` | consistent improvement |
+| `review + conway` > `review-only` | validates Conway signal adds value beyond metadata |
 | Training cost | far below full-model RL/SFT |
 
 #### References
 
 - ThinkLogit: https://arxiv.org/abs/2510.09354
+
+---
+
+### Experiment 5.1.1 — Language/Framework-Level Conway Signal Robustness (Side Excursion)
+
+**Not part of the mainline 5.1 → 5.2 experiment sequence.** Triggered when new
+languages (Go, Kotlin) are added to `prs_copy`, or when per-language AUROC stratification
+shows degradation for a specific language slice.
+
+#### Motivation
+
+Several Exp 5.1 signals are confounded by language-level syntax conventions:
+- `has_pub_func`: fires on 65% of Rust PRs (`pub fn` is standard, not a deliberate
+  API expansion decision) — different semantics from Go capitalized functions or Java `public`
+- `has_try_catch`: structurally zero for all Go PRs (Go uses `if err != nil` not try/catch)
+- `has_bare_except`: Python-only; no equivalent signal for Go/Java error swallowing
+- `imp_external` / `trust_boundary_crossings`: Go intra-org imports are misclassified
+  as external without `go.mod` prefix detection
+
+Additionally, Design by Contract mechanisms (`assert`, `debug_assert!`, `require()`)
+are confounded by build-mode semantics: Python `assert` is disabled with `-O`,
+Rust `debug_assert!` is stripped in release builds, Java `assert` requires `-ea` flag.
+A naive `has_assert` feature would conflate debugging aids with enforced runtime contracts.
+
+#### Plan
+
+1. Audit per-feature prevalence on language-stratified samples
+2. Add Go-specific error handling signals (`has_go_err_wrap`, `has_go_err_discard`)
+3. Add Go `go.mod` prefix scan for intra-org import reclassification
+4. Add language dummies to steerer training or train per-language submodels
+5. Establish language onboarding checklist for future prs_copy expansions
+6. Evaluate DbC feature feasibility if build configuration data becomes available
+
+Full catalogue of known confounds and proposed fixes:
+`docs/phase5_1_1_conway_language_confounds.md`
+
+---
+
+### Experiment 5.2 — Process Reward Model with Potential-Based Shaping
+
+#### Motivation
+
+Exp 5.1 scores the terminal PR state after each attempt (ORM). This gives no guidance
+*during* the agent's trajectory — the agent cannot learn that exploring architecture
+files before editing, or scoping down cross-module changes mid-attempt, produces better
+outcomes than the same terminal state reached blindly.
+
+Exp 5.2 adds **step-level process reward** using potential-based reward shaping, which
+is theoretically guaranteed not to corrupt the terminal reward signal.
+
+#### Core design
+
+Following Ng, Harada & Russell (ICML 1999), the process reward at each step is:
+
+```
+r_dense(t) = γ · Φ(s_{t+1}) − Φ(s_t)
+```
+
+where `Φ(s_t) = steerer.reward_estimate(belief_state_at_step_t)` — the Exp 5.1 ORM
+applied to the agent's current best estimate of the PR's Conway features.
+
+**Key property (Ng et al. 1999 Theorem 1)**: Any reward shaping of this potential-based
+form leaves the set of optimal policies invariant. Adding `r_dense` to the terminal
+reward accelerates learning without introducing spurious optima. No other additive
+reward shaping function has this guarantee.
+
+**Belief state**: At each step, the agent's observable state is the set of files read,
+imports seen, and module paths touched so far. The Conway feature estimates are updated
+incrementally as new tool outputs arrive (same logic as `extract_conway_patch_features.py`,
+applied to partial observations). The belief state also carries an uncertainty term:
+`Φ(belief_t) = steerer_score(belief_t) − λ · uncertainty(belief_t)`, incentivising
+the agent to resolve architectural ambiguity rather than act under it.
+
+#### Anti-hacking properties
+
+The design explicitly rejects action-type rewards (calling exploration tools earns no
+reward by itself) and reasoning-text rewards (writing "I am analyzing module boundaries"
+earns no reward). Only verifiable state transitions — actual reductions in estimated
+Conway risk — contribute to `r_dense`. An additional cap `Σ_t r_dense(t) ≤ |R_terminal|`
+ensures bad terminal outcomes cannot be offset by high process scores.
+
+#### Infrastructure delta from Exp 5.1
+
+1. **Trajectory logger extension**: add per-step `(tool_name, tool_input_summary,
+   belief_state_delta, Φ_before, Φ_after)` to the existing `.traj.json` format
+2. **Belief state tracker**: incremental Conway feature estimation from partial
+   tool outputs, reusing `extract_conway_patch_features.py` parsing logic
+3. **Φ evaluator**: the trained Exp 5.1 ORM called at each step — cheap (linear model)
+
+#### Comparison plan
+
+- Fixed cohort: same 7k task set as Exp 5.1
+- Compare:
+  1. no-steerer baseline (from Exp 5.1 eval)
+  2. Exp 5.1 ORM steerer (terminal scoring only)
+  3. Exp 5.2 PRM steerer (terminal + step-level potential shaping)
+- Primary metric: `AcceptProxy@k` and sample efficiency curve
+- Secondary: trajectory analysis — does the PRM agent explore more architecture files
+  early in its trajectory?
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| PRM > ORM on `AcceptProxy@1` | +3 pp absolute |
+| PRM > ORM on sample efficiency (same AcceptProxy with fewer attempts) | clear curve separation |
+| PRM agent explores more arch-relevant files early in trajectory vs ORM agent | measurable |
+| No reward hacking evidence (repeated identical tool calls, keyword stuffing) | confirmed by trajectory audit |
+
+#### References
+
+- Ng, Harada & Russell (1999): *Policy Invariance Under Reward Transformations:
+  Theory and Application to Reward Shaping*. ICML 1999.
+  https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf
+- ThinkLogit: https://arxiv.org/abs/2510.09354 (paradigm-level connection: small
+  guider's delta steers large model without retraining)
