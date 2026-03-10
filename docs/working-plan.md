@@ -452,7 +452,7 @@ SWE-JEPA latents should make this steerer cheaper to train and more sample-effic
 
 #### Environment and fairness
 
-- Single agentic scaffold for all methods (OpenHands-style loop).
+- Single agentic scaffold for all methods (Mini-SWE-agent/ OpenHands-style loop).
 - Same tools, context window policy, retrieval budget, and step budget.
 - Same repo/time holdouts.
 - Same task set and stopping criteria.
