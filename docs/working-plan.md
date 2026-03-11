@@ -534,6 +534,154 @@ Efficiency:
 | Refactor-demand incidence after submission | reduced |
 | Steerer training cost | substantially below full coder SFT |
 
+### Experiment 4.7.1 — Paired Cohort Eval + Belief-State Analog
+
+#### Motivation
+
+Exp 4.7 judge results showed steered < baseline (43.1% win rate), with largest deficits in
+correctness and review-readiness. A key confound was asynchronous cohort generation:
+baseline and steered trajectories were produced in separate runs and only partially paired
+post hoc. Another issue was over-constraining scope without forcing repo-level integration
+reasoning.
+
+Exp 4.7.1 addresses this with:
+1. **paired execution** (both arms per same instance in one worker run), and
+2. a lightweight **belief-state analog** via `belief.MD` updates in the repo.
+
+Result note:
+- The `belief.MD` surrogate did **not** help in mini-swe-agent.
+- In practice it reduced patch yield and appeared to distract the agent from code-edit completion.
+- Follow-up runs therefore removed the explicit belief file and kept only structured steer hints.
+
+#### Core changes
+
+1. **Paired runner**
+   - New runner executes `non-steered` then `steered` for each `(repo, pull_number)` task.
+   - Produces one JSONL row per pair with both arm outputs and patch paths.
+   - Ensures judge-ready pairs are collected together (no cross-run matching drift).
+
+2. **Belief-state analog in prompt**
+   - Agent maintains `belief.MD` with:
+     - architecture assumptions
+     - touched module hypotheses
+     - interface invariants
+     - uncertainty / risks
+   - Agent updates `belief.MD` during exploration, then removes it from final diff unless
+     explicitly required.
+
+3. **Patch capture parity**
+   - Save `git diff --binary` patch files for both baseline and steered arms.
+   - Avoid reliance on `submission` field in mini trajectories.
+
+#### Expanded feature list for 4.7.1 steerer (from 6 → 28 channels)
+
+Feature groups:
+1. **Scope & churn**
+   - changed files, additions/deletions, net churn ratio, file-type dispersion
+2. **Interface stress**
+   - public API symbol deltas, signature-change count, callsite update ratio
+3. **Ownership friction**
+   - owner-module boundary crossings, reviewer-owner mismatch prior, co-change unfamiliarity
+4. **Architectural risk**
+   - import-graph spread, layer-boundary crossings, dependency fan-out touched
+5. **Review friction proxies**
+   - naming churn ratio, non-functional edit ratio, historically contentious path priors
+6. **Task grounding / urgency**
+   - closing-issue linkage, requested-reviewer load, PR narrative specificity
+7. **Belief-quality proxies**
+   - invariant mentions, architecture rationale completeness, uncertainty flagging
+
+#### Evaluation protocol
+
+- Fixed cohort of feature PRs.
+- For each instance: collect baseline+steered pair in same run.
+- Judge compares paired patches blind A/B with same rubric as Exp 4.7.
+- Report:
+  - overall steered win rate
+  - size-matched win rate
+  - correctness/review-readiness deltas (primary)
+  - test-coverage and scope metrics (secondary)
+
+#### Success criterion (4.7.1)
+
+| Criterion | Target |
+|-----------|--------|
+| Steered win rate vs Exp 4.7 steerer baseline | >50% |
+| Correctness delta | non-negative |
+| Review-readiness delta | non-negative |
+
+### Experiment 4.7.2 — PR Refinement History and Conway Drift
+
+#### Motivation
+
+Exp 4.7/4.7.1 focused on final generated patches, but that collapses the real PR lifecycle
+into a single end state. To validate the Conway-state framing directly, we should inspect
+**intermediate PR revisions** and ask whether the cumulative patch becomes more
+merge-ready after review feedback.
+
+This is the closest real-data analog to the steerer objective:
+- PR state is observed at successive revisions
+- reviewers provide friction / refactor signals
+- the next revision may reduce or amplify architectural stress
+
+#### Core hypothesis
+
+Within real merged PRs, Conway-style risk signals should improve over time:
+1. from the first visible PR commit to the final visible PR commit, and
+2. more sharply on **post-review response revisions** than on arbitrary commit-to-commit updates.
+
+#### Data source
+
+Use `prs_copy` fields already present in the database:
+- `base_sha`, `head_sha`
+- `commits` (ordered commit list with hashes and timestamps)
+- `review_threads` (comment timestamps, file paths, often `commit_hash`)
+- `submitted_reviews` (approval / changes-requested events)
+
+#### Method
+
+For each merged PR with `total_commits >= 2`:
+1. Reconstruct cumulative snapshots `git diff base_sha..<commit_i>`.
+2. Run the Conway patch extractor on each cumulative patch.
+3. Align review comments / submitted reviews to commit intervals by timestamp.
+4. Compare:
+   - first visible commit vs final visible commit
+   - latest pre-review commit vs first post-review commit
+
+#### Metrics
+
+Primary raw metrics:
+- `api_change_without_tests`
+- `public_api_without_docs`
+- `shared_change_isolated`
+- `ownership_diffusion`
+- `boundary_density`
+- `cross_module_spread`
+- `security_risk_score`
+- `operability_score`
+
+Derived summary:
+- heuristic `conway_risk_proxy` over the raw channels above
+- per-metric median delta and improved fraction
+
+#### Implementation plan
+
+1. `extract_pr_refinement_history.py`
+   - emits one JSONL row per cumulative commit snapshot
+   - aligns review events to adjacent commit intervals
+2. `data/phase4_7_2_pr_refinement_history_summary.json`
+   - aggregate first->final and post-review trend statistics
+3. `docs/phase4_7_2_pr_refinement_history.md`
+   - write up whether Conway risk declines through review-driven refinement
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| Median `conway_risk_proxy` first -> final | decreases |
+| Post-review transitions improve more often than random commit transitions | yes |
+| `api_change_without_tests` / `public_api_without_docs` improved fraction | >50% |
+
 ### Experiment 5.1 — RL on Steerer (Conway-Aware State Policy)
 
 #### Motivation

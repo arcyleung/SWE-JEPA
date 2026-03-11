@@ -25,9 +25,17 @@ def is_shallow(repo: str) -> bool:
 def unshallow_to_depth(repo: str, depth: int, fetch_timeout_sec: int) -> dict:
     name = os.path.basename(repo)
     if not os.path.isdir(repo):
-        return {'repo': repo, 'name': name, 'status': 'error', 'reason': 'missing_dir'}
+        repo_lower = repo.lower()
+        if repo_lower != repo and os.path.isdir(repo_lower):
+            repo = repo_lower
+            name = os.path.basename(repo)
+        else:
+            return {'repo': repo, 'name': name, 'status': 'error', 'reason': 'missing_dir'}
     if not os.path.isdir(os.path.join(repo, '.git')):
         return {'repo': repo, 'name': name, 'status': 'error', 'reason': 'missing_git'}
+
+    # Mark repo as safe before any git operations
+    run(['git', 'config', '--global', '--add', 'safe.directory', repo], timeout=10)
 
     if not is_shallow(repo):
         return {'repo': repo, 'name': name, 'status': 'skipped_not_shallow', 'reason': ''}
@@ -56,8 +64,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument('--repos-list', default='/shared_workspace_mfs/arthur/coder/unshallow_repos_test/all_repos_shallow.txt')
     ap.add_argument('--depth', type=int, default=5000)
-    ap.add_argument('--workers', type=int, default=24)
-    ap.add_argument('--fetch-timeout-sec', type=int, default=180)
+    ap.add_argument('--workers', type=int, default=12)
+    ap.add_argument('--fetch-timeout-sec', type=int, default=600)
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--out-json', default='/shared_workspace_mfs/arthur/coder/unshallow_repos_test/unshallow_d5000_results.json')
     ap.add_argument('--out-jsonl', default='/shared_workspace_mfs/arthur/coder/unshallow_repos_test/unshallow_d5000_results.jsonl')

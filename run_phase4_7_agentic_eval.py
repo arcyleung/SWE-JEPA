@@ -110,7 +110,11 @@ def _umount_overlay(merged: str, upper: str, work: str):
 
 def _create_worktree(repo_path: str, tag: str) -> str:
     os.makedirs(WORKTREE_BASE, exist_ok=True)
-    wt = os.path.join(WORKTREE_BASE, tag)
+    # Use unique worktree paths to avoid collisions across retries/reruns.
+    unique = f"{tag}_{os.getpid()}_{int(time.time() * 1000)}_{random.randint(0, 999999)}"
+    wt = os.path.join(WORKTREE_BASE, unique)
+    # Prune stale worktree metadata before adding.
+    subprocess.run(["git", "-c", "safe.directory=*", "-C", repo_path, "worktree", "prune"], capture_output=True)
     os.makedirs(wt, exist_ok=True)
     subprocess.run(
         ["git", "-c", "safe.directory=*", "-C", repo_path, "worktree", "add", "--detach", wt, "HEAD"],

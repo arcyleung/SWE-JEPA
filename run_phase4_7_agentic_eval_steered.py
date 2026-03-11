@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 import pg8000.native
 import yaml
 
+from extract_conway_patch_features import extract_features as extract_conway_patch_features
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
 MODELS_YAML = os.path.join(ROOT, "models.yaml")
@@ -111,7 +113,11 @@ def _umount_overlay(merged: str, upper: str, work: str):
 
 def _create_worktree(repo_path: str, tag: str) -> str:
     os.makedirs(WORKTREE_BASE, exist_ok=True)
-    wt = os.path.join(WORKTREE_BASE, tag)
+    # Use unique worktree paths to avoid collisions across retries/reruns.
+    unique = f"{tag}_{os.getpid()}_{int(time.time() * 1000)}_{random.randint(0, 999999)}"
+    wt = os.path.join(WORKTREE_BASE, unique)
+    # Prune stale worktree metadata before adding.
+    subprocess.run(["git", "-c", "safe.directory=*", "-C", repo_path, "worktree", "prune"], capture_output=True)
     os.makedirs(wt, exist_ok=True)
     subprocess.run(
         ["git", "-c", "safe.directory=*", "-C", repo_path, "worktree", "add", "--detach", wt, "HEAD"],
@@ -282,15 +288,76 @@ def _fetch_tasks_by_keys(task_keys: list[tuple[str, int]], seed: int) -> list[di
     return out
 
 
-def _build_features(t: dict, changed_files_after: int) -> list[float]:
-    return [
-        0.0,  # is_draft not available in current task extract
-        math.log1p(float(max(changed_files_after, 0))),
-        math.log1p(float(max(t.get("additions", 0), 0))),
-        math.log1p(float(max(t.get("deletions", 0), 0))),
-        math.log1p(float(max(t.get("requested_reviewers_count", 0), 0))),
-        float(t.get("has_closing_issue", 0.0)),
-    ]
+LEGACY_FEATURES = [
+    "is_draft",
+    "changed_files",
+    "additions",
+    "deletions",
+    "requested_reviewers_count",
+    "has_closing_issue",
+]
+LEGACY_LOG1P_FEATURES = frozenset(["changed_files", "additions", "deletions", "requested_reviewers_count"])
+
+
+def _count_patch_lines(patch_text: str) -> tuple[int, int]:
+    additions = 0
+    deletions = 0
+    for line in patch_text.splitlines():
+        if line.startswith("+++") or line.startswith("---"):
+            continue
+        if line.startswith("+"):
+            additions += 1
+        elif line.startswith("-"):
+            deletions += 1
+    return additions, deletions
+
+
+def _build_patch_feature_map(
+    patch_text: str,
+    changed_files_list: list[str],
+    repo_dir: str | None = None,
+    base_sha: str | None = None,
+    workspace_dir: str | None = None,
+) -> dict[str, float]:
+    additions, deletions = _count_patch_lines(patch_text)
+    feats = extract_conway_patch_features(
+        patch_text,
+        changed_files_list,
+        False,
+        0,
+        0,
+        "",
+        repo_dir=repo_dir,
+        base_sha=base_sha,
+        workspace_dir=workspace_dir,
+    )
+    return {
+        "changed_files": float(len(changed_files_list)),
+        "additions": float(additions),
+        "deletions": float(deletions),
+        **{k: v for k, v in feats.items() if isinstance(v, (int, float))},
+    }
+
+
+def _legacy_feature_map(task: dict, changed_files_after: int) -> dict[str, float]:
+    return {
+        "is_draft": 0.0,
+        "changed_files": float(max(changed_files_after, 0)),
+        "additions": float(max(task.get("additions", 0), 0)),
+        "deletions": float(max(task.get("deletions", 0), 0)),
+        "requested_reviewers_count": float(max(task.get("requested_reviewers_count", 0), 0)),
+        "has_closing_issue": float(task.get("has_closing_issue", 0.0)),
+    }
+
+
+def _vectorize_feature_map(feature_map: dict[str, float], feature_names: list[str], log1p_features: set[str]) -> list[float]:
+    out = []
+    for name in feature_names:
+        value = float(feature_map.get(name, 0.0) or 0.0)
+        if name in log1p_features:
+            value = math.log1p(max(value, 0.0))
+        out.append(value)
+    return out
 
 
 def _sigmoid(x: float) -> float:
@@ -307,6 +374,14 @@ class Steerer:
     w_accept: float = 1.0
     w_refactor: float = 1.0
     scope_penalty: float = 0.15
+    _feature_names: list[str] = None  # type: ignore[assignment]
+    _log1p_features: set[str] = None  # type: ignore[assignment]
+    _feature_source: str = ""
+
+    def __post_init__(self):
+        self._feature_names = list(self.blob.get("features", LEGACY_FEATURES))
+        self._log1p_features = set(self.blob.get("log1p_features", sorted(LEGACY_LOG1P_FEATURES)))
+        self._feature_source = self.blob.get("feature_source", "legacy_metadata")
 
     def _pred_head(self, head: str, x: list[float]) -> float:
         h = self.blob[head]
@@ -320,8 +395,27 @@ class Steerer:
             z += float(coef[i]) * xi
         return _sigmoid(z)
 
-    def score(self, task: dict, changed_files_after: int) -> tuple[float, dict]:
-        x = _build_features(task, changed_files_after)
+    def score(
+        self,
+        task: dict,
+        changed_files_after: int,
+        patch_text: str = "",
+        changed_files_list: list[str] | None = None,
+        repo_dir: str | None = None,
+        base_sha: str | None = None,
+        workspace_dir: str | None = None,
+    ) -> tuple[float, dict]:
+        if self._feature_source == "conway_patch_features":
+            feature_map = _build_patch_feature_map(
+                patch_text,
+                changed_files_list or [],
+                repo_dir=repo_dir,
+                base_sha=base_sha,
+                workspace_dir=workspace_dir,
+            )
+        else:
+            feature_map = _legacy_feature_map(task, changed_files_after)
+        x = _vectorize_feature_map(feature_map, self._feature_names, self._log1p_features)
         p_acc = self._pred_head("acceptance", x)
         p_ref = self._pred_head("refactor", x)
         exp_files = max(1.0, float(task.get("changed_files", 1)))
@@ -331,6 +425,14 @@ class Steerer:
             "p_accept": p_acc,
             "p_refactor": p_ref,
             "scope_drift": scope_drift,
+            "patch_chars": len(patch_text),
+            "feature_source": self._feature_source,
+            "blame_unique_authors": float(feature_map.get("blame_unique_authors", 0.0)),
+            "blame_top_author_share": float(feature_map.get("blame_top_author_share", 0.0)),
+            "ownership_diffusion": float(feature_map.get("ownership_diffusion", 0.0)),
+            "api_change_without_tests": float(feature_map.get("api_change_without_tests", 0.0)),
+            "shared_change_isolated": float(feature_map.get("shared_change_isolated", 0.0)),
+            "boundary_crossing_without_obs": float(feature_map.get("boundary_crossing_without_obs", 0.0)),
             "score": s,
         }
 
@@ -349,6 +451,8 @@ def _task_prompt(t: dict, steer_hint: str = "") -> str:
     return (
         f"{core}\n{hints}{steer}\n"
         "Goal: produce a high-quality, merge-ready patch with minimal unnecessary scope.\n"
+        "Before making broad edits to shared, public, or long-lived code, inspect local ownership and change history"
+        " with `git blame` or `git log -L` on the exact file/function you plan to modify.\n"
         "Run relevant tests/checks if possible, then finish with COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT."
     )
 
@@ -371,6 +475,7 @@ def _run_attempt(
     api_base_override: str | None,
     api_key_override: str | None,
     litellm_model_override: str | None,
+    temperature: float = 0.0,
 ) -> dict:
     base_url = _normalize_api_base(api_base_override or model_cfg["litellm_params"]["api_base"])
     api_key = api_key_override or model_cfg["litellm_params"]["api_key"]
@@ -411,32 +516,60 @@ def _run_attempt(
         "-c",
         f"model.model_kwargs.api_key={api_key}",
         "-c",
-        "model.model_kwargs.temperature=0.0",
+        f"model.model_kwargs.temperature={float(temperature):.3f}",
     ]
     rr = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout_sec)
     files = _changed_files(merged)
-    return {
+    out = {
         "returncode": rr.returncode,
         "stdout_tail": (rr.stdout or "")[-2000:],
         "stderr_tail": (rr.stderr or "")[-1200:],
         "changed_files_after": len(files),
+        "changed_files_list": files,
         "changed_files_list_head": files[:20],
+        "touched_tests": any(("/test" in f.lower()) or ("tests/" in f.lower()) or ("_test." in f.lower()) for f in files),
         "traj_path": traj if os.path.exists(traj) else "",
+        "temperature": float(temperature),
     }
+    if out["traj_path"]:
+        try:
+            tj = json.load(open(out["traj_path"]))
+            info = tj.get("info", {})
+            out["exit_status"] = info.get("exit_status", "")
+            ms = info.get("model_stats", {})
+            out["model_calls"] = ms.get("api_calls", 0)
+            out["model_cost"] = ms.get("instance_cost", 0.0)
+        except Exception:
+            pass
+    return out
 
 
 def _steer_hint(attempt_idx: int, base_expected_files: int, prev_diag: dict | None) -> str:
-    if attempt_idx == 0:
-        return (
-            f"Target a focused patch touching around {max(1, base_expected_files)} file(s). "
-            "Avoid broad refactors, renames, and unrelated cleanup."
-        )
-    if prev_diag is None:
-        return "Keep scope minimal and align with likely reviewer expectations."
-    drift = float(prev_diag.get("scope_drift", 0.0))
-    if drift > 0.6:
-        return "Previous attempt had too much scope drift. Reduce touched files and remove cross-cutting edits."
-    return "Increase merge readiness: keep naming and API boundaries consistent; avoid refactor churn."
+    payload = {
+        "attempt_idx": int(attempt_idx),
+        "p_accept": None,
+        "p_refactor": None,
+        "scope_drift": None,
+        "score": None,
+        "blame_unique_authors": None,
+        "blame_top_author_share": None,
+        "ownership_diffusion": None,
+        "api_change_without_tests": None,
+        "shared_change_isolated": None,
+        "boundary_crossing_without_obs": None,
+    }
+    if prev_diag is not None:
+        payload["p_accept"] = float(prev_diag.get("p_accept", 0.0))
+        payload["p_refactor"] = float(prev_diag.get("p_refactor", 0.0))
+        payload["scope_drift"] = float(prev_diag.get("scope_drift", 0.0))
+        payload["score"] = float(prev_diag.get("score", 0.0))
+        payload["blame_unique_authors"] = float(prev_diag.get("blame_unique_authors", 0.0))
+        payload["blame_top_author_share"] = float(prev_diag.get("blame_top_author_share", 0.0))
+        payload["ownership_diffusion"] = float(prev_diag.get("ownership_diffusion", 0.0))
+        payload["api_change_without_tests"] = float(prev_diag.get("api_change_without_tests", 0.0))
+        payload["shared_change_isolated"] = float(prev_diag.get("shared_change_isolated", 0.0))
+        payload["boundary_crossing_without_obs"] = float(prev_diag.get("boundary_crossing_without_obs", 0.0))
+    return json.dumps(payload, ensure_ascii=True)
 
 
 def _run_one_task(
@@ -445,6 +578,7 @@ def _run_one_task(
     repo_dirs: dict[str, str],
     tokens: list[str],
     out_traj_dir: str,
+    out_patch_dir: str | None,
     mini_step_limit: int,
     timeout_sec: int,
     agent_python: str,
@@ -455,6 +589,7 @@ def _run_one_task(
     steer_max_attempts: int,
     steer_accept_threshold: float,
     steer_refactor_threshold: float,
+    steer_retry_temperature: float,
 ) -> dict:
     repo = t["repo"]
     repo_dir = repo_dirs.get(repo)
@@ -493,15 +628,19 @@ def _run_one_task(
             }
 
         os.makedirs(out_traj_dir, exist_ok=True)
+        if out_patch_dir:
+            os.makedirs(out_patch_dir, exist_ok=True)
         attempts = []
         best = None
         best_diag = None
+        best_patch_text = ""
 
         for ai in range(max(1, steer_max_attempts)):
             subprocess.run(["git", "-c", "safe.directory=*", "-C", merged, "reset", "--hard", t["base_sha"]], capture_output=True)
             hint = _steer_hint(ai, max(1, int(t.get("changed_files", 1))), best_diag if ai > 0 else None)
             task_text = _task_prompt(t, hint if steerer else "")
             traj = os.path.join(out_traj_dir, f"{t['instance_id']}__pr{t['pull_number']}__a{ai}.traj.json")
+            attempt_temperature = 0.0 if (not steerer or ai == 0) else min(0.8, float(steer_retry_temperature) * float(ai))
             rr = _run_attempt(
                 merged,
                 task_text,
@@ -513,14 +652,26 @@ def _run_one_task(
                 api_base_override,
                 api_key_override,
                 litellm_model_override,
+                attempt_temperature,
             )
+            gp = subprocess.run(["git", "-c", "safe.directory=*", "-C", merged, "diff", "--binary"], capture_output=True, text=True)
+            patch_text = gp.stdout if gp.returncode == 0 else ""
             diag = {"score": 0.0, "p_accept": 0.0, "p_refactor": 0.0, "scope_drift": 0.0}
             if steerer:
-                score, diag = steerer.score(t, rr["changed_files_after"])
+                score, diag = steerer.score(
+                    t,
+                    rr["changed_files_after"],
+                    patch_text=patch_text,
+                    changed_files_list=rr.get("changed_files_list", []),
+                    repo_dir=repo_dir,
+                    base_sha=t.get("base_sha"),
+                    workspace_dir=merged,
+                )
                 diag["score"] = score
             row = {
                 "attempt_idx": ai,
                 "hint": hint,
+                "temperature": rr.get("temperature", attempt_temperature),
                 "returncode": rr["returncode"],
                 "traj_path": rr["traj_path"],
                 "changed_files_after": rr["changed_files_after"],
@@ -530,6 +681,7 @@ def _run_one_task(
             if (best is None) or (diag["score"] > best_diag["score"]):
                 best = rr
                 best_diag = diag
+                best_patch_text = patch_text
 
             if steerer:
                 if diag["p_accept"] >= steer_accept_threshold and diag["p_refactor"] <= steer_refactor_threshold:
@@ -554,6 +706,13 @@ def _run_one_task(
             "steer_attempts": attempts,
             "steer_best_diag": best_diag,
         }
+        if out_patch_dir:
+            patch_path = os.path.join(out_patch_dir, f"{t['instance_id']}__pr{t['pull_number']}.patch")
+            with open(patch_path, "w") as pf:
+                pf.write(best_patch_text)
+            out["patch_path"] = patch_path
+            out["patch_chars"] = len(best_patch_text)
+            out["has_patch"] = len(best_patch_text.strip()) > 0
         return out
     except subprocess.TimeoutExpired:
         return {"repo": repo, "instance_id": t["instance_id"], "pull_number": t["pull_number"], "status": "timeout", "elapsed_sec": time.time() - t0}
@@ -591,6 +750,7 @@ def main():
     ap.add_argument("--out-jsonl", default=OUT_JSONL)
     ap.add_argument("--out-summary", default=OUT_SUMMARY)
     ap.add_argument("--traj-dir", default=os.path.join(ROOT, "data", "phase4_7_trajectories_steered"))
+    ap.add_argument("--patch-dir", default=os.path.join(ROOT, "data", "phase4_7_patches_steered"))
     ap.add_argument("--steerer-model", default=os.path.join(ROOT, "data", "phase4_7_pr_steerer_model.json"))
     ap.add_argument("--steer-max-attempts", type=int, default=3)
     ap.add_argument("--steer-accept-threshold", type=float, default=0.65)
@@ -598,6 +758,7 @@ def main():
     ap.add_argument("--steer-w-accept", type=float, default=1.0)
     ap.add_argument("--steer-w-refactor", type=float, default=1.0)
     ap.add_argument("--steer-scope-penalty", type=float, default=0.15)
+    ap.add_argument("--steer-retry-temperature", type=float, default=0.25)
     ap.add_argument("--disable-steering", action="store_true")
     args = ap.parse_args()
 
@@ -626,6 +787,7 @@ def main():
 
     os.makedirs(os.path.dirname(args.out_jsonl), exist_ok=True)
     os.makedirs(args.traj_dir, exist_ok=True)
+    os.makedirs(args.patch_dir, exist_ok=True)
 
     rows = []
     with open(args.out_jsonl, "w") as out_handle:
@@ -638,6 +800,7 @@ def main():
                     repo_dirs,
                     tokens,
                     args.traj_dir,
+                    args.patch_dir,
                     args.step_limit,
                     args.timeout_sec,
                     args.agent_python,
@@ -648,6 +811,7 @@ def main():
                     args.steer_max_attempts,
                     args.steer_accept_threshold,
                     args.steer_refactor_threshold,
+                    args.steer_retry_temperature,
                 )
                 for t in tasks
             ]

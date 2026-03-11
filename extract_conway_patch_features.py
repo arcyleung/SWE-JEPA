@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
+import subprocess
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
@@ -35,6 +37,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
 OUT_JSONL    = os.path.join(ROOT, "data", "conway_patch_features.jsonl")
 OUT_SUMMARY  = os.path.join(ROOT, "data", "conway_patch_features_summary.json")
+REPOS_BASE   = "/shared_workspace_mfs/repos"
 
 # ── Tree-sitter setup ──────────────────────────────────────────────────────
 
@@ -133,10 +136,14 @@ def _get_parser(lang: str) -> Optional[Parser]:
 
 def _ts_nodes(node, *types):
     """Yield all descendant nodes matching any of the given types."""
-    if node.type in types:
-        yield node
-    for child in node.children:
-        yield from _ts_nodes(child, *types)
+    want = set(types)
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        if cur.type in want:
+            yield cur
+        if cur.children:
+            stack.extend(reversed(cur.children))
 
 # ── Import classification ──────────────────────────────────────────────────
 
@@ -152,6 +159,22 @@ class ImportCounts:
     ext_infra:    int = 0   # cloud SDKs, k8s, docker, terraform
     # Language
     lang:         str = ""
+
+
+@dataclass
+class DiffHunk:
+    old_start: int
+    old_count: int
+    new_start: int
+    new_count: int
+    lines: list[str] = field(default_factory=list)
+
+
+@dataclass
+class FileDiff:
+    old_path: str
+    new_path: str
+    hunks: list[DiffHunk] = field(default_factory=list)
 
 # External package name heuristics
 _NETWORK_PKGS = re.compile(
@@ -559,6 +582,395 @@ def _parse_imports_for_lang(added_src: bytes, lang: str, added_lines: list[str])
     return ImportCounts(lang=lang)
 
 
+def _repo_dir_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not os.path.isdir(REPOS_BASE):
+        return out
+    for entry in os.listdir(REPOS_BASE):
+        path = os.path.join(REPOS_BASE, entry)
+        if not os.path.isdir(path):
+            continue
+        parts = entry.split("__")
+        if len(parts) < 3:
+            continue
+        owner = parts[1]
+        name = "__".join(parts[2:])
+        out[f"{owner}/{name}"] = path
+    return out
+
+
+def _normalize_diff_path(path: str) -> str:
+    if path.startswith("a/") or path.startswith("b/"):
+        return path[2:]
+    return path
+
+
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+
+
+def _parse_unified_diff(patch: str) -> list[FileDiff]:
+    files: list[FileDiff] = []
+    current: FileDiff | None = None
+    current_hunk: DiffHunk | None = None
+    for raw in patch.splitlines():
+        if raw.startswith("diff --git "):
+            parts = raw.split()
+            old_path = _normalize_diff_path(parts[2]) if len(parts) > 2 else ""
+            new_path = _normalize_diff_path(parts[3]) if len(parts) > 3 else old_path
+            current = FileDiff(old_path=old_path, new_path=new_path)
+            files.append(current)
+            current_hunk = None
+            continue
+        if current is None:
+            continue
+        if raw.startswith("--- "):
+            current.old_path = "" if raw[4:] == "/dev/null" else _normalize_diff_path(raw[4:])
+            continue
+        if raw.startswith("+++ "):
+            current.new_path = "" if raw[4:] == "/dev/null" else _normalize_diff_path(raw[4:])
+            continue
+        m = _HUNK_RE.match(raw)
+        if m:
+            current_hunk = DiffHunk(
+                old_start=int(m.group(1)),
+                old_count=int(m.group(2) or "1"),
+                new_start=int(m.group(3)),
+                new_count=int(m.group(4) or "1"),
+            )
+            current.hunks.append(current_hunk)
+            continue
+        if current_hunk is not None and raw[:1] in {" ", "+", "-", "\\"}:
+            current_hunk.lines.append(raw)
+    return files
+
+
+def _git_show_text(repo_dir: str, sha: str, path: str) -> str:
+    if not repo_dir or not sha or not path:
+        return ""
+    rr = subprocess.run(
+        ["git", "-c", "safe.directory=*", "-C", repo_dir, "show", f"{sha}:{path}"],
+        capture_output=True,
+        text=True,
+    )
+    return rr.stdout if rr.returncode == 0 else ""
+
+
+def _read_workspace_text(workspace_dir: str | None, path: str) -> str:
+    if not workspace_dir or not path:
+        return ""
+    abs_path = os.path.join(workspace_dir, path)
+    if not os.path.exists(abs_path) or not os.path.isfile(abs_path):
+        return ""
+    try:
+        return open(abs_path, errors="replace").read()
+    except Exception:
+        return ""
+
+
+def _apply_file_hunks(before_text: str, file_diff: FileDiff) -> str:
+    if not file_diff.new_path:
+        return ""
+    before_lines = before_text.splitlines(keepends=True)
+    out: list[str] = []
+    cursor = 0
+    for hunk in file_diff.hunks:
+        start_old = max(0, hunk.old_start - 1)
+        out.extend(before_lines[cursor:start_old])
+        idx = start_old
+        no_newline_next = False
+        for i, raw in enumerate(hunk.lines):
+            prefix = raw[:1]
+            body = raw[1:]
+            if prefix == "\\":
+                no_newline_next = True
+                continue
+            if prefix == " ":
+                if idx < len(before_lines):
+                    out.append(before_lines[idx])
+                else:
+                    out.append(body + ("" if no_newline_next else "\n"))
+                idx += 1
+            elif prefix == "-":
+                idx += 1
+            elif prefix == "+":
+                out.append(body + ("" if no_newline_next else "\n"))
+            no_newline_next = False
+        cursor = idx
+    out.extend(before_lines[cursor:])
+    return "".join(out)
+
+
+_AST_METRIC_KEYS = [
+    "func_defs",
+    "class_defs",
+    "public_defs",
+    "param_total",
+    "call_sites",
+    "branch_nodes",
+    "try_nodes",
+    "import_nodes",
+    "inheritance_nodes",
+    "assignment_nodes",
+]
+
+_FUNC_NODE_TYPES = {
+    "function_definition", "function_declaration", "method_definition", "method_declaration",
+    "function_item", "method", "function", "func_literal", "constructor_declaration",
+}
+_CLASS_NODE_TYPES = {
+    "class_definition", "class_declaration", "class_specifier", "struct_item",
+    "enum_item", "interface_declaration", "object_declaration", "trait_item",
+}
+_CALL_NODE_TYPES = {"call", "call_expression", "method_invocation"}
+_BRANCH_NODE_TYPES = {
+    "if_statement", "if_expression", "for_statement", "for_expression", "while_statement",
+    "while_expression", "switch_statement", "switch_expression", "match_expression",
+    "case_statement", "case_clause", "select_statement",
+}
+_TRY_NODE_TYPES = {"try_statement", "except_clause", "catch_clause", "finally_clause"}
+_IMPORT_NODE_TYPES = {
+    "import_statement", "import_from_statement", "import_declaration",
+    "use_declaration", "preproc_include", "include_statement",
+}
+_INHERIT_NODE_TYPES = {"extends_clause", "implements_clause", "super_interfaces", "superclass", "base_class_clause"}
+_ASSIGN_NODE_TYPES = {"assignment", "assignment_expression"}
+_PARAM_NODE_TYPES = {
+    "parameters", "formal_parameters", "parameter_list", "lambda_parameters",
+    "typed_parameter", "required_parameter", "optional_parameter", "parameter",
+}
+
+
+def _zero_ast_metrics() -> dict[str, int]:
+    return {k: 0 for k in _AST_METRIC_KEYS}
+
+
+def _is_public_name(name: str) -> bool:
+    return bool(name) and not name.startswith("_")
+
+
+def _ast_metrics_for_source(source: str, path: str) -> dict[str, int]:
+    ext = os.path.splitext(path)[1].lower()
+    lang = _LANG_BY_EXT.get(ext)
+    if not source or not lang:
+        return _zero_ast_metrics()
+    parser = _get_parser(lang)
+    if parser is None:
+        return _zero_ast_metrics()
+    try:
+        tree = parser.parse(source.encode(errors="replace"))
+    except Exception:
+        return _zero_ast_metrics()
+
+    metrics = _zero_ast_metrics()
+    for node in _ts_nodes(tree.root_node, *_FUNC_NODE_TYPES):
+        metrics["func_defs"] += 1
+        name_node = node.child_by_field_name("name")
+        name = name_node.text.decode(errors="replace") if name_node is not None else ""
+        if _is_public_name(name):
+            metrics["public_defs"] += 1
+    for node in _ts_nodes(tree.root_node, *_CLASS_NODE_TYPES):
+        metrics["class_defs"] += 1
+        name_node = node.child_by_field_name("name")
+        name = name_node.text.decode(errors="replace") if name_node is not None else ""
+        if _is_public_name(name):
+            metrics["public_defs"] += 1
+    for node in _ts_nodes(tree.root_node, *_PARAM_NODE_TYPES):
+        metrics["param_total"] += max(1, len([c for c in node.named_children if c.type not in {"block", "type_annotation"}]))
+    metrics["call_sites"] = sum(1 for _ in _ts_nodes(tree.root_node, *_CALL_NODE_TYPES))
+    metrics["branch_nodes"] = sum(1 for _ in _ts_nodes(tree.root_node, *_BRANCH_NODE_TYPES))
+    metrics["try_nodes"] = sum(1 for _ in _ts_nodes(tree.root_node, *_TRY_NODE_TYPES))
+    metrics["import_nodes"] = sum(1 for _ in _ts_nodes(tree.root_node, *_IMPORT_NODE_TYPES))
+    metrics["inheritance_nodes"] = sum(1 for _ in _ts_nodes(tree.root_node, *_INHERIT_NODE_TYPES))
+    metrics["assignment_nodes"] = sum(1 for _ in _ts_nodes(tree.root_node, *_ASSIGN_NODE_TYPES))
+    return metrics
+
+
+def _path_metrics(fnames: list[str]) -> dict[str, float]:
+    if not fnames:
+        return {
+            "path_depth_mean": 0.0,
+            "path_depth_max": 0.0,
+            "topdir_entropy": 0.0,
+            "test_file_ratio": 0.0,
+            "docs_file_ratio": 0.0,
+        }
+    depths = [max(0, f.count("/")) for f in fnames]
+    topdirs = Counter((f.split("/")[0] if "/" in f else f) for f in fnames)
+    total = float(len(fnames))
+    entropy = 0.0
+    for c in topdirs.values():
+        p = c / total
+        entropy -= p * math.log(p + 1e-12)
+    test_files = sum(1 for f in fnames if re.search(r"(^|/)(tests?|spec|specs|__tests__)(/|$)|(_test|\\.spec|\\.test)\\.", f, re.I))
+    docs_files = sum(1 for f in fnames if re.search(r"(^|/)(docs?|documentation)(/|$)|README|CHANGELOG|NEWS", f, re.I))
+    return {
+        "path_depth_mean": float(sum(depths) / len(depths)),
+        "path_depth_max": float(max(depths)),
+        "topdir_entropy": float(entropy),
+        "test_file_ratio": float(test_files / total),
+        "docs_file_ratio": float(docs_files / total),
+    }
+
+
+def _blame_metrics(repo_dir: str | None, base_sha: str | None, file_diff: FileDiff) -> dict[str, float]:
+    if not repo_dir or not base_sha or not file_diff.old_path or not file_diff.hunks:
+        return {
+            "blame_unique_authors": 0.0,
+            "blame_top_author_share": 0.0,
+            "blame_author_entropy": 0.0,
+            "blame_multi_author_hunks": 0.0,
+        }
+    rr = subprocess.run(
+        [
+            "git", "-c", "safe.directory=*", "-C", repo_dir, "blame", "--line-porcelain",
+            base_sha, "--", file_diff.old_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if rr.returncode != 0:
+        return {
+            "blame_unique_authors": 0.0,
+            "blame_top_author_share": 0.0,
+            "blame_author_entropy": 0.0,
+            "blame_multi_author_hunks": 0.0,
+        }
+
+    line_to_author: dict[int, str] = {}
+    current_author = ""
+    current_line = None
+    for line in rr.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and re.fullmatch(r"[0-9a-f]{7,40}", parts[0]):
+            try:
+                current_line = int(parts[2])
+            except Exception:
+                current_line = None
+            continue
+        if line.startswith("author-mail "):
+            current_author = line.split(" ", 1)[1].strip()
+            if current_line is not None:
+                line_to_author[current_line] = current_author
+                current_line = current_line + 1
+
+    counts: Counter = Counter()
+    multi_author_hunks = 0
+    for hunk in file_diff.hunks:
+        if hunk.old_count <= 0:
+            continue
+        start = hunk.old_start
+        end = hunk.old_start + hunk.old_count - 1
+        hunk_authors: Counter = Counter()
+        for ln in range(start, end + 1):
+            author = line_to_author.get(ln)
+            if not author:
+                continue
+            counts[author] += 1
+            hunk_authors[author] += 1
+        if len(hunk_authors) > 1:
+            multi_author_hunks += 1
+    total = sum(counts.values())
+    if total <= 0:
+        return {
+            "blame_unique_authors": 0.0,
+            "blame_top_author_share": 0.0,
+            "blame_author_entropy": 0.0,
+            "blame_multi_author_hunks": 0.0,
+        }
+    entropy = 0.0
+    for c in counts.values():
+        p = c / total
+        entropy -= p * math.log(p + 1e-12)
+    return {
+        "blame_unique_authors": float(len(counts)),
+        "blame_top_author_share": float(max(counts.values()) / total),
+        "blame_author_entropy": float(entropy),
+        "blame_multi_author_hunks": float(multi_author_hunks),
+    }
+
+
+def _contextual_patch_features(
+    patch: str,
+    fnames: list[str],
+    repo_dir: str | None = None,
+    base_sha: str | None = None,
+    workspace_dir: str | None = None,
+) -> dict[str, float]:
+    patch_files = _parse_unified_diff(patch)
+    agg = Counter()
+    blame_acc = Counter()
+    public_api_file_count = 0
+    supported_files = 0
+    blamed_files = 0
+    for file_diff in patch_files:
+        path = file_diff.new_path or file_diff.old_path
+        if not path:
+            continue
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in _LANG_BY_EXT:
+            continue
+        supported_files += 1
+        before_text = _git_show_text(repo_dir or "", base_sha or "", file_diff.old_path or path)
+        after_text = _read_workspace_text(workspace_dir, file_diff.new_path or path)
+        if not after_text:
+            after_text = _apply_file_hunks(before_text, file_diff)
+        before_ast = _ast_metrics_for_source(before_text, path)
+        after_ast = _ast_metrics_for_source(after_text, path)
+        if after_ast["public_defs"] > 0:
+            public_api_file_count += 1
+        for key in _AST_METRIC_KEYS:
+            agg[f"ast_before_{key}"] += before_ast[key]
+            agg[f"ast_after_{key}"] += after_ast[key]
+            agg[f"ast_delta_{key}"] += after_ast[key] - before_ast[key]
+        needs_blame = (
+            bool(_SHARED_UTIL.search(path))
+            or bool(_AUTH_CODE.search(path))
+            or bool(_STARTUP_FILE.search(path))
+            or after_ast["public_defs"] > 0
+            or before_ast["public_defs"] > 0
+            or (after_ast["public_defs"] - before_ast["public_defs"]) != 0
+        )
+        before_line_count = before_text.count("\n") + 1 if before_text else 0
+        touched_old_lines = sum(max(0, h.old_count) for h in file_diff.hunks)
+        if needs_blame and before_line_count <= 3000 and touched_old_lines <= 1200:
+            blame_stats = _blame_metrics(repo_dir, base_sha, file_diff)
+            if any(v > 0 for v in blame_stats.values()):
+                blamed_files += 1
+            for key, value in blame_stats.items():
+                blame_acc[key] += value
+
+    path_stats = _path_metrics(fnames)
+    n_files = max(1, len(fnames))
+    ast_delta_public_defs = int(agg.get("ast_delta_public_defs", 0))
+    out: dict[str, float] = {
+        **{k: float(v) for k, v in agg.items()},
+        "ast_supported_files": float(supported_files),
+        "public_api_file_ratio": float(public_api_file_count / n_files),
+        **path_stats,
+    }
+    if blamed_files > 0:
+        out.update(
+            {
+                "blame_unique_authors": float(blame_acc["blame_unique_authors"] / blamed_files),
+                "blame_top_author_share": float(blame_acc["blame_top_author_share"] / blamed_files),
+                "blame_author_entropy": float(blame_acc["blame_author_entropy"] / blamed_files),
+                "blame_multi_author_hunks": float(blame_acc["blame_multi_author_hunks"]),
+                "blamed_files": float(blamed_files),
+            }
+        )
+    else:
+        out.update(
+            {
+                "blame_unique_authors": 0.0,
+                "blame_top_author_share": 0.0,
+                "blame_author_entropy": 0.0,
+                "blame_multi_author_hunks": 0.0,
+                "blamed_files": 0.0,
+            }
+        )
+    return out
+
+
 def extract_features(
     patch: str,
     fp_raw,
@@ -566,6 +978,9 @@ def extract_features(
     total_review_threads: int,
     total_comments: int,
     review_threads_json: str,
+    repo_dir: str | None = None,
+    base_sha: str | None = None,
+    workspace_dir: str | None = None,
 ) -> dict:
     # Truncate patch to avoid catastrophic backtracking on huge diffs
     if len(patch) > _MAX_PATCH_BYTES:
@@ -577,6 +992,13 @@ def extract_features(
     # ── Language detection ────────────────────────────────────────────────
     lang_counts = _detect_langs(fnames)
     primary_lang = lang_counts.most_common(1)[0][0] if lang_counts else "unknown"
+    context_feats = _contextual_patch_features(
+        patch,
+        fnames,
+        repo_dir=repo_dir,
+        base_sha=base_sha,
+        workspace_dir=workspace_dir,
+    )
 
     # ── Import analysis (tree-sitter) ─────────────────────────────────────
     imp = _parse_imports_for_lang(added_src, primary_lang, added)
@@ -603,6 +1025,8 @@ def extract_features(
     modifies_auth    = any(_AUTH_CODE.search(f)      for f in fnames)
     n_langs          = len(lang_counts)
     cross_module_spread = len({f.split("/")[0] for f in fnames if "/" in f})
+    shared_file_ratio = sum(1 for f in fnames if _SHARED_UTIL.search(f)) / max(1, len(fnames))
+    boundary_density = cross_module_spread / max(1, len(fnames))
 
     # ── Error handling ────────────────────────────────────────────────────
     has_try_catch      = bool(_TRY_CATCH.search(patch))
@@ -702,6 +1126,26 @@ def extract_features(
         - 2 * int(ext_client_no_obs)
         - int(ext_client_no_log)
     )
+    api_change_without_tests = int(
+        (int(context_feats.get("ast_delta_public_defs", 0)) != 0 or has_pub_func)
+        and context_feats.get("test_file_ratio", 0.0) == 0.0
+    )
+    schema_change_without_migration = int(has_schema_change and not has_migration)
+    boundary_crossing_without_obs = int(trust_boundary_crossings > 0 and ext_client_no_obs)
+    public_api_without_docs = int(
+        (int(context_feats.get("ast_delta_public_defs", 0)) > 0 or has_pub_func)
+        and context_feats.get("docs_file_ratio", 0.0) == 0.0
+    )
+    dependency_change_without_tests = int(has_dep_file and context_feats.get("test_file_ratio", 0.0) == 0.0)
+    ownership_diffusion = float(
+        context_feats.get("blame_unique_authors", 0.0)
+        * (1.0 - context_feats.get("blame_top_author_share", 0.0))
+    )
+    shared_change_isolated = int(modifies_shared and cross_module_spread <= 1)
+    external_io_without_safety = int(
+        (has_http_client or has_db_client or has_queue_client)
+        and (http_missing_timeout > 0 or ext_client_no_obs or not has_log_warn_err)
+    )
 
     return {
         # ── metadata ──
@@ -727,6 +1171,8 @@ def extract_features(
         "has_startup_file":    int(has_startup_file),
         "modifies_shared_util":int(modifies_shared),
         "modifies_auth_code":  int(modifies_auth),
+        "shared_file_ratio":   float(shared_file_ratio),
+        "boundary_density":    float(boundary_density),
 
         # ── error handling ──
         "has_try_catch":      int(has_try_catch),
@@ -784,6 +1230,15 @@ def extract_features(
         "error_contract_score":     error_contract_score,
         "security_risk_score":      security_risk_score,
         "operability_score":        operability_score,
+        "api_change_without_tests": api_change_without_tests,
+        "schema_change_without_migration": schema_change_without_migration,
+        "boundary_crossing_without_obs": boundary_crossing_without_obs,
+        "public_api_without_docs": public_api_without_docs,
+        "dependency_change_without_tests": dependency_change_without_tests,
+        "shared_change_isolated": shared_change_isolated,
+        "external_io_without_safety": external_io_without_safety,
+        "ownership_diffusion": ownership_diffusion,
+        **context_feats,
 
         # ── ground-truth outcomes (for analysis) ──
         "accepted":         int(bool(pr_merged)),
@@ -795,11 +1250,11 @@ def extract_features(
 
 _write_lock = threading.Lock()
 
-def extract_feature_worker(idx, row, fout, agg, counters):
+def extract_feature_worker(idx, row, fout, agg, counters, repo_dirs):
     """Worker called from ThreadPoolExecutor.
     counters = [ok, err] as a shared mutable list; mutations are under _write_lock.
     """
-    (repo, iid, pr_num, pr_merged, pr_is_draft,
+    (repo, iid, pr_num, base_sha, pr_merged, pr_is_draft,
     changed_files, additions, deletions,
     total_threads, total_comments,
     review_threads, patch, file_patches,
@@ -811,6 +1266,8 @@ def extract_feature_worker(idx, row, fout, agg, counters):
             patch_str, file_patches,
             bool(pr_merged), int(total_threads or 0), int(total_comments or 0),
             review_threads or "",
+            repo_dir=repo_dirs.get(repo),
+            base_sha=base_sha or "",
         )
     except Exception as exc:
         with _write_lock:
@@ -846,6 +1303,7 @@ def main():
     ap.add_argument("--summary-out",default=OUT_SUMMARY)
     ap.add_argument("--min-files",  type=int, default=1)
     ap.add_argument("--max-files",  type=int, default=80)
+    ap.add_argument("--workers",    type=int, default=128)
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(PG_CONFIG_FILE))
@@ -857,7 +1315,7 @@ def main():
         """
         SELECT
             repo, instance_id, pull_number,
-            pr_merged, pr_is_draft,
+            base_sha, pr_merged, pr_is_draft,
             changed_files, additions, deletions,
             total_review_threads, total_comments,
             review_threads, patch, file_patches,
@@ -876,12 +1334,13 @@ def main():
     print(f"Fetched {len(rows)} rows from DB", flush=True)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    repo_dirs = _repo_dir_map()
     counters = [0, 0]   # [ok, err] — mutated under _write_lock
     agg: dict[str, list] = defaultdict(list)
 
     with open(args.out, "w") as fout:
-        with ThreadPoolExecutor(max_workers=64) as pool:
-            futs = [pool.submit(extract_feature_worker, idx, row, fout, agg, counters)
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            futs = [pool.submit(extract_feature_worker, idx, row, fout, agg, counters, repo_dirs)
                     for idx, row in enumerate(rows)]
             for fut in as_completed(futs):
                 exc = fut.exception()
