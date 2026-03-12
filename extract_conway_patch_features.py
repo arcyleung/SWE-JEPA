@@ -38,6 +38,7 @@ PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
 OUT_JSONL    = os.path.join(ROOT, "data", "conway_patch_features.jsonl")
 OUT_SUMMARY  = os.path.join(ROOT, "data", "conway_patch_features_summary.json")
 REPOS_BASE   = "/shared_workspace_mfs/repos"
+GIT_TIMEOUT_SEC = int(os.environ.get("CONWAY_GIT_TIMEOUT_SEC", os.environ.get("PR_REFINEMENT_GIT_TIMEOUT_SEC", "600")))
 
 # ── Tree-sitter setup ──────────────────────────────────────────────────────
 
@@ -644,14 +645,27 @@ def _parse_unified_diff(patch: str) -> list[FileDiff]:
     return files
 
 
+def _git_run(repo_dir: str, args: list[str]) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(
+            ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
+            124,
+            stdout=e.stdout or "",
+            stderr=(e.stderr or "") + f"\nTIMEOUT after {GIT_TIMEOUT_SEC}s",
+        )
+
+
 def _git_show_text(repo_dir: str, sha: str, path: str) -> str:
     if not repo_dir or not sha or not path:
         return ""
-    rr = subprocess.run(
-        ["git", "-c", "safe.directory=*", "-C", repo_dir, "show", f"{sha}:{path}"],
-        capture_output=True,
-        text=True,
-    )
+    rr = _git_run(repo_dir, ["show", f"{sha}:{path}"])
     return rr.stdout if rr.returncode == 0 else ""
 
 
@@ -820,13 +834,9 @@ def _blame_metrics(repo_dir: str | None, base_sha: str | None, file_diff: FileDi
             "blame_author_entropy": 0.0,
             "blame_multi_author_hunks": 0.0,
         }
-    rr = subprocess.run(
-        [
-            "git", "-c", "safe.directory=*", "-C", repo_dir, "blame", "--line-porcelain",
-            base_sha, "--", file_diff.old_path,
-        ],
-        capture_output=True,
-        text=True,
+    rr = _git_run(
+        repo_dir,
+        ["blame", "--line-porcelain", base_sha, "--", file_diff.old_path],
     )
     if rr.returncode != 0:
         return {

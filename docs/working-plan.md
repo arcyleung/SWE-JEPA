@@ -648,6 +648,12 @@ For each merged PR with `total_commits >= 2`:
    - first visible commit vs final visible commit
    - latest pre-review commit vs first post-review commit
 
+Practical sampling note:
+- Full per-commit traversal is the highest-fidelity version of the experiment, but it is too expensive on commit-heavy PRs and very large repositories.
+- The implementation therefore allows capped equal-interval snapshot sampling, with `max_snapshots=5` as the default fast path. For example, a 9-commit PR is sampled at commit indices `1, 3, 5, 7, 9`.
+- This can miss short-lived intermediate states, but the working assumption is that review-driven PR refinement is usually low-frequency relative to the raw commit stream. The goal here is to capture directional Conway drift, not reconstruct every micro-edit.
+- The Nyquist/Shannon analogy is only approximate because commit history is already a sequence of discrete author actions, not uniform samples from a continuous signal. The relevant empirical question is whether sparse visible revisions preserve the main trajectory well enough for downstream analysis.
+
 #### Metrics
 
 Primary raw metrics:
@@ -681,6 +687,13 @@ Derived summary:
 | Median `conway_risk_proxy` first -> final | decreases |
 | Post-review transitions improve more often than random commit transitions | yes |
 | `api_change_without_tests` / `public_api_without_docs` improved fraction | >50% |
+
+Initial readout (2-node Slurm smoke, 41 PRs / 239 snapshots / 25 review-response transitions):
+- Mixed result, not yet a clean confirmation.
+- `boundary_density` improved first->final on 61.0% of PRs, but the aggregate `conway_risk_proxy`
+  did not improve consistently enough yet.
+- Post-review transitions were especially noisy; surviving visible PR commit history is likely an
+  incomplete proxy when authors squash or force-push away earlier revisions.
 
 ### Experiment 5.1 — RL on Steerer (Conway-Aware State Policy)
 

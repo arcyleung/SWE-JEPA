@@ -33,9 +33,11 @@ from extract_conway_patch_features import extract_features, _repo_dir_map
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
+TOKENS_YAML = os.path.join(ROOT, "crawl_tokens.yaml")
 OUT_JSONL = os.path.join(ROOT, "data", "phase4_7_2_pr_refinement_history.jsonl")
 OUT_SUMMARY = os.path.join(ROOT, "data", "phase4_7_2_pr_refinement_history_summary.json")
 OUT_REPORT = os.path.join(ROOT, "docs", "phase4_7_2_pr_refinement_history.md")
+GIT_TIMEOUT_SEC = int(os.environ.get("PR_REFINEMENT_GIT_TIMEOUT_SEC", "600"))
 
 LOWER_BETTER_METRICS = [
     "conway_risk_proxy",
@@ -88,6 +90,15 @@ def _j(v: Any) -> Any:
     return []
 
 
+def _load_tokens() -> list[str]:
+    try:
+        cfg = yaml.safe_load(open(TOKENS_YAML))
+        toks = cfg.get("gh_tokens", []) or []
+        return [str(t).strip() for t in toks if str(t).strip()]
+    except Exception:
+        return []
+
+
 def _parse_ts(v: Any) -> dt.datetime | None:
     if not v:
         return None
@@ -110,11 +121,37 @@ def _iso(v: dt.datetime | None) -> str | None:
 
 
 def _run_git(repo_dir: str, args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(
+            ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
+            124,
+            stdout=e.stdout or "",
+            stderr=(e.stderr or "") + f"\nTIMEOUT after {GIT_TIMEOUT_SEC}s",
+        )
+
+
+def _git_fetch(repo_dir: str, args: list[str], timeout: int = 180) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["git", "-c", "safe.directory=*", "-C", repo_dir, "fetch", *args],
+            capture_output=True,
+            text=True,
+            timeout=min(timeout, GIT_TIMEOUT_SEC),
+        )
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(
+            ["git", "-c", "safe.directory=*", "-C", repo_dir, "fetch", *args],
+            124,
+            stdout=e.stdout or "",
+            stderr=(e.stderr or "") + f"\nTIMEOUT after {min(timeout, GIT_TIMEOUT_SEC)}s",
+        )
 
 
 def _sha_available(repo_dir: str, sha: str) -> bool:
@@ -122,6 +159,78 @@ def _sha_available(repo_dir: str, sha: str) -> bool:
         return False
     rr = _run_git(repo_dir, ["cat-file", "-e", f"{sha}^{{commit}}"])
     return rr.returncode == 0
+
+
+def _github_remote(repo_slug: str, gh_token: str | None) -> str:
+    if gh_token:
+        return f"https://{gh_token}@github.com/{repo_slug}.git"
+    return f"https://github.com/{repo_slug}.git"
+
+
+def _try_fetch_pr_history(
+    repo_dir: str,
+    repo_slug: str,
+    pull_number: int,
+    head_branch: str | None,
+    commit_shas: list[str],
+    gh_tokens: list[str],
+) -> str:
+    wanted = [sha for sha in commit_shas if sha]
+    if wanted and all(_sha_available(repo_dir, sha) for sha in wanted):
+        return "local"
+
+    auths: list[str | None] = [None]
+    for tok in gh_tokens:
+        if tok not in auths:
+            auths.append(tok)
+
+    if pull_number > 0:
+        for tok in auths:
+            rr = _git_fetch(
+                repo_dir,
+                [
+                    "--no-tags",
+                    "--depth=4096",
+                    _github_remote(repo_slug, tok),
+                    f"+refs/pull/{pull_number}/head:refs/remotes/origin/pr/{pull_number}",
+                ],
+                timeout=300,
+            )
+            if rr.returncode == 0 and all(_sha_available(repo_dir, sha) for sha in wanted):
+                return "pull_ref"
+
+    if head_branch:
+        safe_head = re.sub(r"[^A-Za-z0-9._/-]+", "_", str(head_branch).strip())
+        if safe_head:
+            for tok in auths:
+                rr = _git_fetch(
+                    repo_dir,
+                    [
+                        "--no-tags",
+                        "--depth=4096",
+                        _github_remote(repo_slug, tok),
+                        f"+refs/heads/{head_branch}:refs/remotes/origin/recovered/{safe_head}",
+                    ],
+                    timeout=300,
+                )
+                if rr.returncode == 0 and all(_sha_available(repo_dir, sha) for sha in wanted):
+                    return "head_branch"
+
+    missing = [sha for sha in wanted if not _sha_available(repo_dir, sha)]
+    for sha in missing:
+        ok = False
+        for tok in auths:
+            rr = _git_fetch(
+                repo_dir,
+                ["--depth=1", _github_remote(repo_slug, tok), sha],
+                timeout=180,
+            )
+            if rr.returncode == 0 and _sha_available(repo_dir, sha):
+                ok = True
+                break
+        if not ok:
+            return "unrecovered"
+    return "direct_sha" if missing else "local"
 
 
 def _commit_list(commits_raw: Any) -> list[dict[str, Any]]:
@@ -176,28 +285,48 @@ def _commit_list(commits_raw: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _sample_commits(commits: list[dict[str, Any]], max_snapshots: int) -> list[dict[str, Any]]:
+    if max_snapshots <= 0 or len(commits) <= max_snapshots:
+        return commits
+    if max_snapshots == 1:
+        return [commits[-1]]
+    positions: list[int] = []
+    for i in range(max_snapshots):
+        pos = round(i * (len(commits) - 1) / (max_snapshots - 1))
+        if not positions or pos != positions[-1]:
+            positions.append(pos)
+    if positions[-1] != len(commits) - 1:
+        positions[-1] = len(commits) - 1
+    return [commits[pos] for pos in positions]
+
+
 def _review_events(review_threads_raw: Any, submitted_reviews_raw: Any) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for th in _j(review_threads_raw):
         if not isinstance(th, dict):
             continue
-        thread_id = th.get("thread_id")
-        file_path = th.get("file_path")
-        for c in _j(th.get("comments", [])):
+        thread_id = th.get("thread_id") or th.get("id")
+        file_path = th.get("file_path") or th.get("path")
+        comments = th.get("comments", [])
+        if isinstance(comments, dict):
+            comments = comments.get("nodes", [])
+        for c in _j(comments):
             if not isinstance(c, dict):
                 continue
             body = str(c.get("body") or "")
-            created_at = _parse_ts(c.get("created_at"))
+            author = c.get("author") if isinstance(c.get("author"), dict) else {}
+            commit = c.get("commit") if isinstance(c.get("commit"), dict) else {}
+            created_at = _parse_ts(c.get("created_at")) or _parse_ts(c.get("createdAt"))
             if not created_at:
                 continue
             events.append(
                 {
                     "kind": "review_comment",
                     "created_at": created_at,
-                    "commit_hash": str(c.get("commit_hash") or "").strip(),
+                    "commit_hash": str(c.get("commit_hash") or commit.get("oid") or "").strip(),
                     "body": body,
-                    "file_path": file_path or c.get("file_path"),
-                    "author": c.get("author"),
+                    "file_path": file_path or c.get("file_path") or c.get("path"),
+                    "author": c.get("author") if not author else author.get("login") or author.get("name"),
                     "thread_id": thread_id,
                     "is_refactor": bool(REFACTOR_RE.search(body)),
                 }
@@ -205,7 +334,8 @@ def _review_events(review_threads_raw: Any, submitted_reviews_raw: Any) -> list[
     for r in _j(submitted_reviews_raw):
         if not isinstance(r, dict):
             continue
-        submitted_at = _parse_ts(r.get("submitted_at"))
+        author = r.get("author") if isinstance(r.get("author"), dict) else {}
+        submitted_at = _parse_ts(r.get("submitted_at")) or _parse_ts(r.get("submittedAt"))
         if not submitted_at:
             continue
         state = str(r.get("state") or "").upper()
@@ -214,7 +344,7 @@ def _review_events(review_threads_raw: Any, submitted_reviews_raw: Any) -> list[
                 "kind": "submitted_review",
                 "created_at": submitted_at,
                 "state": state,
-                "reviewer": r.get("reviewer"),
+                "reviewer": r.get("reviewer") or author.get("login") or author.get("name"),
                 "body": str(r.get("body") or ""),
                 "is_refactor": False,
             }
@@ -291,13 +421,19 @@ def _conway_risk_proxy(feats: dict[str, Any]) -> tuple[float, int]:
     return float(score), int(flag_count)
 
 
-def _extract_snapshot_rows(row: tuple[Any, ...], repo_dirs: dict[str, str]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+def _extract_snapshot_rows(
+    row: tuple[Any, ...],
+    repo_dirs: dict[str, str],
+    gh_tokens: list[str],
+    max_snapshots: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     (
         repo,
         instance_id,
         pull_number,
         base_sha,
         head_sha,
+        head_branch,
         total_commits,
         commits_raw,
         review_threads_raw,
@@ -314,13 +450,22 @@ def _extract_snapshot_rows(row: tuple[Any, ...], repo_dirs: dict[str, str]) -> t
     commits = _commit_list(commits_raw)
     if len(commits) < 2:
         return [], {"repo": repo, "instance_id": instance_id, "status": "insufficient_commits"}
+    sampled_commits = _sample_commits(commits, max_snapshots)
+    recovery_mode = _try_fetch_pr_history(
+        repo_dir,
+        str(repo),
+        int(pull_number or 0),
+        str(head_branch or ""),
+        [c["hash"] for c in commits],
+        gh_tokens,
+    )
     events = _review_events(review_threads_raw, submitted_reviews_raw)
     created_dt = _parse_ts(created_at)
     merged_dt = _parse_ts(merged_at)
 
     rows_out: list[dict[str, Any]] = []
     prev_commit_dt: dt.datetime | None = None
-    for commit in commits:
+    for sample_idx, commit in enumerate(sampled_commits, start=1):
         commit_sha = commit["hash"]
         commit_dt = commit["committed_date"]
         if not _sha_available(repo_dir, commit_sha):
@@ -329,6 +474,7 @@ def _extract_snapshot_rows(row: tuple[Any, ...], repo_dirs: dict[str, str]) -> t
                 "instance_id": instance_id,
                 "status": "missing_commit_sha",
                 "commit_sha": commit_sha,
+                "recovery_mode": recovery_mode,
                 "emitted_rows": len(rows_out),
             }
         diff_rr = _run_git(repo_dir, ["diff", "--find-renames", "--find-copies=50%", "--binary", str(base_sha), commit_sha])
@@ -338,6 +484,7 @@ def _extract_snapshot_rows(row: tuple[Any, ...], repo_dirs: dict[str, str]) -> t
                 "instance_id": instance_id,
                 "status": "diff_failed",
                 "commit_sha": commit_sha,
+                "recovery_mode": recovery_mode,
                 "stderr": diff_rr.stderr[:400],
                 "emitted_rows": len(rows_out),
             }
@@ -348,6 +495,7 @@ def _extract_snapshot_rows(row: tuple[Any, ...], repo_dirs: dict[str, str]) -> t
                 "instance_id": instance_id,
                 "status": "name_only_failed",
                 "commit_sha": commit_sha,
+                "recovery_mode": recovery_mode,
                 "stderr": names_rr.stderr[:400],
                 "emitted_rows": len(rows_out),
             }
@@ -381,7 +529,11 @@ def _extract_snapshot_rows(row: tuple[Any, ...], repo_dirs: dict[str, str]) -> t
                 "pull_number": int(pull_number or 0),
                 "base_sha": str(base_sha),
                 "head_sha": str(head_sha or ""),
+                "head_branch": str(head_branch or ""),
                 "total_commits": int(total_commits or len(commits)),
+                "sampled_commit_count": int(len(sampled_commits)),
+                "sampled_commit_rank": int(sample_idx),
+                "history_recovery_mode": recovery_mode,
                 "commit_sha": commit_sha,
                 "commit_idx": int(commit["commit_idx"]),
                 "commit_message_headline": commit["message_headline"],
@@ -574,6 +726,41 @@ def _write_report(
         f.write("\n".join(lines) + "\n")
 
 
+def _default_progress_log_path(out_path: str) -> str:
+    stem, _ = os.path.splitext(out_path)
+    return stem + ".progress.log"
+
+
+def _default_partial_summary_path(summary_path: str) -> str:
+    stem, ext = os.path.splitext(summary_path)
+    return stem + ".partial" + ext
+
+
+def _append_progress_log(path: str, payload: dict[str, Any]) -> None:
+    with open(path, "a") as f:
+        f.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def _write_partial_summary(
+    path: str,
+    rows: list[dict[str, Any]],
+    counters: dict[str, int],
+    errors: list[dict[str, Any]],
+    processed: int,
+    total: int,
+) -> None:
+    summary = _build_summary(rows)
+    summary["errors"] = errors[:200]
+    summary["ok_prs"] = counters["ok_prs"]
+    summary["err_prs"] = counters["err_prs"]
+    summary["processed_prs"] = processed
+    summary["total_prs"] = total
+    summary["progress_fraction"] = float(processed / total) if total > 0 else 0.0
+    summary["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    with open(path, "w") as f:
+        json.dump(summary, f, indent=2)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=500)
@@ -582,6 +769,10 @@ def main() -> None:
     ap.add_argument("--out", default=OUT_JSONL)
     ap.add_argument("--summary-out", default=OUT_SUMMARY)
     ap.add_argument("--report-out", default=OUT_REPORT)
+    ap.add_argument("--progress-log", default=None)
+    ap.add_argument("--partial-summary-out", default=None)
+    ap.add_argument("--progress-every", type=int, default=100)
+    ap.add_argument("--max-snapshots", type=int, default=5)
     ap.add_argument("--min-commits", type=int, default=2)
     ap.add_argument("--order", choices=("newest", "oldest", "random"), default="newest")
     ap.add_argument("--min-files", type=int, default=1)
@@ -620,7 +811,7 @@ def main() -> None:
         WITH latest AS (
             SELECT DISTINCT ON (instance_id)
                 repo, instance_id, pull_number,
-                base_sha, head_sha,
+                base_sha, head_sha, head_branch,
                 total_commits, commits,
                 review_threads, submitted_reviews,
                 created_at, merged_at, crawl_time,
@@ -637,7 +828,7 @@ def main() -> None:
         )
         SELECT
             repo, instance_id, pull_number,
-            base_sha, head_sha,
+            base_sha, head_sha, head_branch,
             total_commits, commits,
             review_threads, submitted_reviews,
             created_at, merged_at
@@ -661,16 +852,42 @@ def main() -> None:
     print(f"Fetched {len(rows)} PR rows")
 
     repo_dirs = _repo_dir_map()
+    gh_tokens = _load_tokens()
+    args.progress_log = args.progress_log or _default_progress_log_path(args.out)
+    args.partial_summary_out = args.partial_summary_out or _default_partial_summary_path(args.summary_out)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     os.makedirs(os.path.dirname(args.summary_out), exist_ok=True)
     os.makedirs(os.path.dirname(args.report_out), exist_ok=True)
+    os.makedirs(os.path.dirname(args.progress_log), exist_ok=True)
+    os.makedirs(os.path.dirname(args.partial_summary_out), exist_ok=True)
 
     counters = {"ok_prs": 0, "err_prs": 0, "rows": 0}
     errors: list[dict[str, Any]] = []
     all_rows: list[dict[str, Any]] = []
+    total_futs = len(rows)
+    progress_every = max(1, int(args.progress_every))
 
-    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        futs = [pool.submit(_extract_snapshot_rows, row, repo_dirs) for row in rows]
+    with open(args.out, "w"):
+        pass
+    with open(args.progress_log, "w") as f:
+        f.write(
+            json.dumps(
+                {
+                    "event": "start",
+                    "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "total_prs": total_futs,
+                    "workers": int(args.workers),
+                    "out": args.out,
+                    "summary_out": args.summary_out,
+                    "partial_summary_out": args.partial_summary_out,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+
+    with open(args.out, "a") as out_f, ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        futs = [pool.submit(_extract_snapshot_rows, row, repo_dirs, gh_tokens, args.max_snapshots) for row in rows]
         for idx, fut in enumerate(as_completed(futs), start=1):
             snapshot_rows, err = fut.result()
             with _WRITE_LOCK:
@@ -678,6 +895,9 @@ def main() -> None:
                     all_rows.extend(snapshot_rows)
                     counters["ok_prs"] += 1
                     counters["rows"] += len(snapshot_rows)
+                    for row in snapshot_rows:
+                        out_f.write(json.dumps(row) + "\n")
+                    out_f.flush()
                 if err:
                     counters["err_prs"] += 1
                     errors.append(err)
@@ -686,6 +906,20 @@ def main() -> None:
                         f"  processed={idx} ok_prs={counters['ok_prs']} err_prs={counters['err_prs']} rows={counters['rows']}",
                         flush=True,
                     )
+                if idx % progress_every == 0 or idx == total_futs:
+                    payload = {
+                        "event": "progress",
+                        "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+                        "processed_prs": idx,
+                        "total_prs": total_futs,
+                        "ok_prs": counters["ok_prs"],
+                        "err_prs": counters["err_prs"],
+                        "rows": counters["rows"],
+                        "progress_fraction": float(idx / total_futs) if total_futs > 0 else 0.0,
+                        "last_error_status": (errors[-1].get("status") if errors else None),
+                    }
+                    _append_progress_log(args.progress_log, payload)
+                    _write_partial_summary(args.partial_summary_out, all_rows, counters, errors, idx, total_futs)
 
     all_rows.sort(key=lambda r: (r["repo"], r["instance_id"], r["commit_idx"]))
     with open(args.out, "w") as f:
@@ -699,6 +933,21 @@ def main() -> None:
     with open(args.summary_out, "w") as f:
         json.dump(summary, f, indent=2)
     _write_report(summary, args.report_out, args.limit, args.out, args.summary_out)
+    _append_progress_log(
+        args.progress_log,
+        {
+            "event": "done",
+            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "processed_prs": total_futs,
+            "total_prs": total_futs,
+            "ok_prs": counters["ok_prs"],
+            "err_prs": counters["err_prs"],
+            "rows": counters["rows"],
+            "out": args.out,
+            "summary_out": args.summary_out,
+            "report_out": args.report_out,
+        },
+    )
 
     print(f"Done: {counters['rows']} commit snapshots from {counters['ok_prs']} PRs -> {args.out}")
     print(f"Summary -> {args.summary_out}")
