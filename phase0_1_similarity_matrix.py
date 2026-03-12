@@ -19,7 +19,6 @@ import ast as _ast
 import multiprocessing as mp
 import os
 import re
-import shutil
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -33,6 +32,12 @@ import torch
 import yaml
 import pg8000.native
 from hidden_state_extractor import load_teacher, MaskedRegion, extract_hidden_states
+from repo_overlay_cache import (
+    DEFAULT_OVERLAY_MERGED_BASE as OVERLAY_MERGED_BASE,
+    DEFAULT_OVERLAY_TMP_BASE as OVERLAY_SHM_BASE,
+    mount_overlay as _mount_overlay_impl,
+    unmount_overlay as _umount_overlay_impl,
+)
 
 # ── Teacher models ─────────────────────────────────────────────────────────────
 TEACHER_MODELS = [
@@ -46,10 +51,17 @@ N_GPUS = 8   # cuda:0 … cuda:7; one model copy per GPU for parallel extraction
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 REPOS_BASE          = '/shared_workspace_mfs/repos'
-OVERLAY_MERGED_BASE = '/shared_workspace_mfs/repos_tmp_overlayfs'
-OVERLAY_SHM_BASE    = '/dev/shm'
 PG_CONFIG_FILE      = os.path.join(os.path.dirname(__file__), 'postgres_connection.yaml')
 TOKENS_FILE         = os.path.join(os.path.dirname(__file__), 'crawl_tokens.yaml')
+
+
+def _mount_overlay(repo_path: str, tag: str) -> tuple[str, str, str]:
+    mount = _mount_overlay_impl(repo_path, tag)
+    return mount.merged, mount.upper, mount.work
+
+
+def _umount_overlay(merged: str, upper: str, work: str):
+    _umount_overlay_impl((merged, upper, work))
 
 # ── Postgres connection ────────────────────────────────────────────────────────
 _pg_cfg = yaml.safe_load(open(PG_CONFIG_FILE))
@@ -172,38 +184,6 @@ def _fetch_sha(repo_dir: str, sha: str, repo_slug: str, gh_token: str | None):
            else f'https://github.com/{repo_slug}.git')
     subprocess.run(['git', '-C', repo_dir, 'fetch', '--depth=1', url, sha],
                    capture_output=True, timeout=120)
-
-
-# ── OverlayFS helpers ──────────────────────────────────────────────────────────
-
-def _mount_overlay(repo_path: str, tag: str) -> tuple[str, str, str]:
-    upper  = os.path.join(OVERLAY_SHM_BASE, f'ovl-upper-{tag}')
-    work   = os.path.join(OVERLAY_SHM_BASE, f'ovl-work-{tag}')
-    merged = os.path.join(OVERLAY_MERGED_BASE, tag)
-    for d in (upper, work, merged):
-        os.makedirs(d, exist_ok=True)
-    subprocess.run(
-        ['fuse-overlayfs',
-         '-o', f'lowerdir={repo_path},upperdir={upper},workdir={work}',
-         merged],
-        check=True,
-    )
-    return merged, upper, work
-
-
-def _umount_overlay(merged: str, upper: str, work: str):
-    # Try normal unmount first; if the mount point is still busy (e.g. another
-    # worker shares the same lowerdir), fall back to lazy unmount (-z) which
-    # detaches the mount immediately and defers cleanup until all references drop.
-    for cmd in (
-        ['fusermount3', '-u',      merged],
-        ['fusermount3', '-u', '-z', merged],
-    ):
-        r = subprocess.run(cmd, capture_output=True, timeout=30)
-        if r.returncode == 0:
-            break
-    for d in (upper, work):
-        shutil.rmtree(d, ignore_errors=True)
 
 
 # ── Token loading ──────────────────────────────────────────────────────────────

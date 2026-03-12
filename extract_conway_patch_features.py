@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
 from typing import Optional
@@ -645,27 +646,37 @@ def _parse_unified_diff(patch: str) -> list[FileDiff]:
     return files
 
 
-def _git_run(repo_dir: str, args: list[str]) -> subprocess.CompletedProcess[str]:
+def _remaining_timeout(deadline_monotonic: float | None) -> int:
+    if deadline_monotonic is None:
+        return GIT_TIMEOUT_SEC
+    remaining = max(0.0, deadline_monotonic - time.monotonic())
+    if remaining <= 0.0:
+        raise TimeoutError("deadline exceeded")
+    return max(1, min(GIT_TIMEOUT_SEC, int(remaining)))
+
+
+def _git_run(repo_dir: str, args: list[str], deadline_monotonic: float | None = None) -> subprocess.CompletedProcess[str]:
+    timeout_sec = _remaining_timeout(deadline_monotonic)
     try:
         return subprocess.run(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
             capture_output=True,
             text=True,
-            timeout=GIT_TIMEOUT_SEC,
+            timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
         return subprocess.CompletedProcess(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
             124,
             stdout=e.stdout or "",
-            stderr=(e.stderr or "") + f"\nTIMEOUT after {GIT_TIMEOUT_SEC}s",
+            stderr=(e.stderr or "") + f"\nTIMEOUT after {timeout_sec}s",
         )
 
 
-def _git_show_text(repo_dir: str, sha: str, path: str) -> str:
+def _git_show_text(repo_dir: str, sha: str, path: str, deadline_monotonic: float | None = None) -> str:
     if not repo_dir or not sha or not path:
         return ""
-    rr = _git_run(repo_dir, ["show", f"{sha}:{path}"])
+    rr = _git_run(repo_dir, ["show", f"{sha}:{path}"], deadline_monotonic=deadline_monotonic)
     return rr.stdout if rr.returncode == 0 else ""
 
 
@@ -826,7 +837,12 @@ def _path_metrics(fnames: list[str]) -> dict[str, float]:
     }
 
 
-def _blame_metrics(repo_dir: str | None, base_sha: str | None, file_diff: FileDiff) -> dict[str, float]:
+def _blame_metrics(
+    repo_dir: str | None,
+    base_sha: str | None,
+    file_diff: FileDiff,
+    deadline_monotonic: float | None = None,
+) -> dict[str, float]:
     if not repo_dir or not base_sha or not file_diff.old_path or not file_diff.hunks:
         return {
             "blame_unique_authors": 0.0,
@@ -837,6 +853,7 @@ def _blame_metrics(repo_dir: str | None, base_sha: str | None, file_diff: FileDi
     rr = _git_run(
         repo_dir,
         ["blame", "--line-porcelain", base_sha, "--", file_diff.old_path],
+        deadline_monotonic=deadline_monotonic,
     )
     if rr.returncode != 0:
         return {
@@ -905,6 +922,7 @@ def _contextual_patch_features(
     repo_dir: str | None = None,
     base_sha: str | None = None,
     workspace_dir: str | None = None,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, float]:
     patch_files = _parse_unified_diff(patch)
     agg = Counter()
@@ -913,6 +931,7 @@ def _contextual_patch_features(
     supported_files = 0
     blamed_files = 0
     for file_diff in patch_files:
+        _remaining_timeout(deadline_monotonic)
         path = file_diff.new_path or file_diff.old_path
         if not path:
             continue
@@ -920,7 +939,12 @@ def _contextual_patch_features(
         if ext not in _LANG_BY_EXT:
             continue
         supported_files += 1
-        before_text = _git_show_text(repo_dir or "", base_sha or "", file_diff.old_path or path)
+        before_text = _git_show_text(
+            repo_dir or "",
+            base_sha or "",
+            file_diff.old_path or path,
+            deadline_monotonic=deadline_monotonic,
+        )
         after_text = _read_workspace_text(workspace_dir, file_diff.new_path or path)
         if not after_text:
             after_text = _apply_file_hunks(before_text, file_diff)
@@ -943,7 +967,7 @@ def _contextual_patch_features(
         before_line_count = before_text.count("\n") + 1 if before_text else 0
         touched_old_lines = sum(max(0, h.old_count) for h in file_diff.hunks)
         if needs_blame and before_line_count <= 3000 and touched_old_lines <= 1200:
-            blame_stats = _blame_metrics(repo_dir, base_sha, file_diff)
+            blame_stats = _blame_metrics(repo_dir, base_sha, file_diff, deadline_monotonic=deadline_monotonic)
             if any(v > 0 for v in blame_stats.values()):
                 blamed_files += 1
             for key, value in blame_stats.items():
@@ -991,6 +1015,7 @@ def extract_features(
     repo_dir: str | None = None,
     base_sha: str | None = None,
     workspace_dir: str | None = None,
+    deadline_monotonic: float | None = None,
 ) -> dict:
     # Truncate patch to avoid catastrophic backtracking on huge diffs
     if len(patch) > _MAX_PATCH_BYTES:
@@ -1008,6 +1033,7 @@ def extract_features(
         repo_dir=repo_dir,
         base_sha=base_sha,
         workspace_dir=workspace_dir,
+        deadline_monotonic=deadline_monotonic,
     )
 
     # ── Import analysis (tree-sitter) ─────────────────────────────────────

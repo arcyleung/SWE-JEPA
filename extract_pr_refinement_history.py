@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -30,6 +31,7 @@ import yaml
 
 from build_pr_mdp_dataset_v51 import REFACTOR_RE
 from extract_conway_patch_features import extract_features, _repo_dir_map
+from repo_overlay_cache import OverlayMount, RepoRamdiskCache, unmount_overlay
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
@@ -38,6 +40,8 @@ OUT_JSONL = os.path.join(ROOT, "data", "phase4_7_2_pr_refinement_history.jsonl")
 OUT_SUMMARY = os.path.join(ROOT, "data", "phase4_7_2_pr_refinement_history_summary.json")
 OUT_REPORT = os.path.join(ROOT, "docs", "phase4_7_2_pr_refinement_history.md")
 GIT_TIMEOUT_SEC = int(os.environ.get("PR_REFINEMENT_GIT_TIMEOUT_SEC", "600"))
+PR_TIMEOUT_SEC = int(os.environ.get("PR_REFINEMENT_PR_TIMEOUT_SEC", "600"))
+CHECKPOINT_TABLE = "pr_refinement_history_checkpoints"
 
 LOWER_BETTER_METRICS = [
     "conway_risk_proxy",
@@ -77,6 +81,137 @@ def _load_db() -> pg8000.native.Connection:
         password=cfg["password"],
         database=cfg["database"],
     )
+
+
+def _ensure_checkpoint_table(conn: pg8000.native.Connection) -> None:
+    conn.run(
+        f"""
+        CREATE TABLE IF NOT EXISTS {CHECKPOINT_TABLE} (
+            run_tag TEXT NOT NULL,
+            instance_id TEXT NOT NULL,
+            repo TEXT,
+            status TEXT NOT NULL,
+            n_rows INTEGER NOT NULL DEFAULT 0,
+            payload_json JSONB NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (run_tag, instance_id)
+        )
+        """
+    )
+    conn.run(
+        f"""
+        CREATE INDEX IF NOT EXISTS idx_{CHECKPOINT_TABLE}_run_status
+        ON {CHECKPOINT_TABLE} (run_tag, status, updated_at DESC)
+        """
+    )
+
+
+def _checkpoint_payload(snapshot_rows: list[dict[str, Any]], err: dict[str, Any] | None) -> str:
+    return json.dumps(
+        {
+            "snapshot_rows": snapshot_rows,
+            "error": err,
+        },
+        sort_keys=True,
+    )
+
+
+def _checkpoint_status(snapshot_rows: list[dict[str, Any]], err: dict[str, Any] | None) -> str:
+    if err:
+        return str(err.get("status") or "error")
+    if snapshot_rows:
+        return "ok"
+    return "ok_empty"
+
+
+def _upsert_checkpoint(
+    conn: pg8000.native.Connection,
+    run_tag: str,
+    repo: str,
+    instance_id: str,
+    snapshot_rows: list[dict[str, Any]],
+    err: dict[str, Any] | None,
+) -> None:
+    conn.run(
+        f"""
+        INSERT INTO {CHECKPOINT_TABLE} (
+            run_tag,
+            instance_id,
+            repo,
+            status,
+            n_rows,
+            payload_json,
+            updated_at
+        ) VALUES (
+            :run_tag,
+            :instance_id,
+            :repo,
+            :status,
+            :n_rows,
+            CAST(:payload_json AS jsonb),
+            now()
+        )
+        ON CONFLICT (run_tag, instance_id) DO UPDATE SET
+            repo = EXCLUDED.repo,
+            status = EXCLUDED.status,
+            n_rows = EXCLUDED.n_rows,
+            payload_json = EXCLUDED.payload_json,
+            updated_at = now()
+        """,
+        run_tag=run_tag,
+        instance_id=instance_id,
+        repo=repo,
+        status=_checkpoint_status(snapshot_rows, err),
+        n_rows=len(snapshot_rows),
+        payload_json=_checkpoint_payload(snapshot_rows, err),
+    )
+
+
+def _load_completed_checkpoints(
+    conn: pg8000.native.Connection,
+    run_tag: str,
+    instance_ids: set[str],
+) -> dict[str, dict[str, Any]]:
+    if not instance_ids:
+        return {}
+    literals = ", ".join("'" + iid.replace("'", "''") + "'" for iid in sorted(instance_ids))
+    rows = conn.run(
+        f"""
+        SELECT
+            instance_id,
+            repo,
+            status,
+            n_rows,
+            payload_json::text
+        FROM {CHECKPOINT_TABLE}
+        WHERE run_tag = :run_tag
+          AND status IN ('ok', 'ok_empty')
+          AND instance_id IN ({literals})
+        """,
+        run_tag=run_tag,
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for instance_id, repo, status, n_rows, payload_json in rows:
+        payload: dict[str, Any]
+        try:
+            payload = json.loads(payload_json or "{}")
+        except Exception:
+            payload = {}
+        snapshot_rows = payload.get("snapshot_rows")
+        if not isinstance(snapshot_rows, list):
+            snapshot_rows = []
+        err = payload.get("error")
+        if err is not None and not isinstance(err, dict):
+            err = {"status": str(err)}
+        out[str(instance_id)] = {
+            "instance_id": str(instance_id),
+            "repo": str(repo or ""),
+            "status": str(status or ""),
+            "n_rows": int(n_rows or 0),
+            "snapshot_rows": snapshot_rows,
+            "error": err,
+        }
+    return out
 
 
 def _j(v: Any) -> Any:
@@ -120,37 +255,53 @@ def _iso(v: dt.datetime | None) -> str | None:
     return v.isoformat() if v else None
 
 
-def _run_git(repo_dir: str, args: list[str]) -> subprocess.CompletedProcess[str]:
+def _remaining_timeout(deadline_monotonic: float | None) -> int:
+    if deadline_monotonic is None:
+        return GIT_TIMEOUT_SEC
+    remaining = max(0.0, deadline_monotonic - time.monotonic())
+    if remaining <= 0.0:
+        raise TimeoutError("deadline exceeded")
+    return max(1, min(GIT_TIMEOUT_SEC, int(remaining)))
+
+
+def _run_git(repo_dir: str, args: list[str], deadline_monotonic: float | None = None) -> subprocess.CompletedProcess[str]:
+    timeout_sec = _remaining_timeout(deadline_monotonic)
     try:
         return subprocess.run(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
             capture_output=True,
             text=True,
-            timeout=GIT_TIMEOUT_SEC,
+            timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
         return subprocess.CompletedProcess(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
             124,
             stdout=e.stdout or "",
-            stderr=(e.stderr or "") + f"\nTIMEOUT after {GIT_TIMEOUT_SEC}s",
+            stderr=(e.stderr or "") + f"\nTIMEOUT after {timeout_sec}s",
         )
 
 
-def _git_fetch(repo_dir: str, args: list[str], timeout: int = 180) -> subprocess.CompletedProcess[str]:
+def _git_fetch(
+    repo_dir: str,
+    args: list[str],
+    timeout: int = 180,
+    deadline_monotonic: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    timeout_sec = min(timeout, _remaining_timeout(deadline_monotonic))
     try:
         return subprocess.run(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, "fetch", *args],
             capture_output=True,
             text=True,
-            timeout=min(timeout, GIT_TIMEOUT_SEC),
+            timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
         return subprocess.CompletedProcess(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, "fetch", *args],
             124,
             stdout=e.stdout or "",
-            stderr=(e.stderr or "") + f"\nTIMEOUT after {min(timeout, GIT_TIMEOUT_SEC)}s",
+            stderr=(e.stderr or "") + f"\nTIMEOUT after {timeout_sec}s",
         )
 
 
@@ -174,6 +325,7 @@ def _try_fetch_pr_history(
     head_branch: str | None,
     commit_shas: list[str],
     gh_tokens: list[str],
+    deadline_monotonic: float | None = None,
 ) -> str:
     wanted = [sha for sha in commit_shas if sha]
     if wanted and all(_sha_available(repo_dir, sha) for sha in wanted):
@@ -195,6 +347,7 @@ def _try_fetch_pr_history(
                     f"+refs/pull/{pull_number}/head:refs/remotes/origin/pr/{pull_number}",
                 ],
                 timeout=300,
+                deadline_monotonic=deadline_monotonic,
             )
             if rr.returncode == 0 and all(_sha_available(repo_dir, sha) for sha in wanted):
                 return "pull_ref"
@@ -212,6 +365,7 @@ def _try_fetch_pr_history(
                         f"+refs/heads/{head_branch}:refs/remotes/origin/recovered/{safe_head}",
                     ],
                     timeout=300,
+                    deadline_monotonic=deadline_monotonic,
                 )
                 if rr.returncode == 0 and all(_sha_available(repo_dir, sha) for sha in wanted):
                     return "head_branch"
@@ -224,6 +378,7 @@ def _try_fetch_pr_history(
                 repo_dir,
                 ["--depth=1", _github_remote(repo_slug, tok), sha],
                 timeout=180,
+                deadline_monotonic=deadline_monotonic,
             )
             if rr.returncode == 0 and _sha_available(repo_dir, sha):
                 ok = True
@@ -426,6 +581,7 @@ def _extract_snapshot_rows(
     repo_dirs: dict[str, str],
     gh_tokens: list[str],
     max_snapshots: int,
+    repo_cache: RepoRamdiskCache,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     (
         repo,
@@ -441,127 +597,214 @@ def _extract_snapshot_rows(
         created_at,
         merged_at,
     ) = row
-    repo_dir = repo_dirs.get(repo)
-    if not repo_dir or not os.path.isdir(repo_dir):
+    source_repo_dir = repo_dirs.get(repo)
+    if not source_repo_dir or not os.path.isdir(source_repo_dir):
         return [], {"repo": repo, "instance_id": instance_id, "status": "missing_repo_dir"}
-    if not base_sha or not _sha_available(repo_dir, str(base_sha)):
-        return [], {"repo": repo, "instance_id": instance_id, "status": "missing_base_sha"}
+    deadline_monotonic = time.monotonic() + max(1, PR_TIMEOUT_SEC)
+    try:
+        cached_repo_dir = repo_cache.ensure_local_repo(
+            source_repo_dir,
+            deadline_monotonic=deadline_monotonic,
+        )
+    except TimeoutError:
+        return [], {
+            "repo": repo,
+            "instance_id": instance_id,
+            "status": "pr_timeout",
+            "timeout_sec": PR_TIMEOUT_SEC,
+            "stage": "repo_cache",
+        }
+    except Exception as e:
+        return [], {
+            "repo": repo,
+            "instance_id": instance_id,
+            "status": "repo_cache_failed",
+            "error": str(e)[:400],
+        }
 
     commits = _commit_list(commits_raw)
     if len(commits) < 2:
         return [], {"repo": repo, "instance_id": instance_id, "status": "insufficient_commits"}
     sampled_commits = _sample_commits(commits, max_snapshots)
-    recovery_mode = _try_fetch_pr_history(
-        repo_dir,
-        str(repo),
-        int(pull_number or 0),
-        str(head_branch or ""),
-        [c["hash"] for c in commits],
-        gh_tokens,
-    )
-    events = _review_events(review_threads_raw, submitted_reviews_raw)
-    created_dt = _parse_ts(created_at)
-    merged_dt = _parse_ts(merged_at)
+    wanted_shas = [str(c["hash"]) for c in commits if c.get("hash")]
+    overlay_mount: OverlayMount | None = None
+    repo_dir = cached_repo_dir
+    if (
+        not base_sha
+        or not _sha_available(cached_repo_dir, str(base_sha))
+        or any(not _sha_available(cached_repo_dir, sha) for sha in wanted_shas)
+    ):
+        try:
+            overlay_mount = repo_cache.mount_overlay(
+                source_repo_dir,
+                f"prref-{os.getpid()}-{threading.get_ident()}-{instance_id}",
+                deadline_monotonic=deadline_monotonic,
+            )
+            repo_dir = overlay_mount.merged
+        except TimeoutError:
+            return [], {
+                "repo": repo,
+                "instance_id": instance_id,
+                "status": "pr_timeout",
+                "timeout_sec": PR_TIMEOUT_SEC,
+                "stage": "overlay_mount",
+            }
+        except Exception as e:
+            return [], {
+                "repo": repo,
+                "instance_id": instance_id,
+                "status": "overlay_mount_failed",
+                "error": str(e)[:400],
+            }
+    if not base_sha or not _sha_available(repo_dir, str(base_sha)):
+        if overlay_mount is not None:
+            unmount_overlay(overlay_mount)
+        return [], {"repo": repo, "instance_id": instance_id, "status": "missing_base_sha"}
+    try:
+        recovery_mode = _try_fetch_pr_history(
+            repo_dir,
+            str(repo),
+            int(pull_number or 0),
+            str(head_branch or ""),
+            [c["hash"] for c in commits],
+            gh_tokens,
+            deadline_monotonic=deadline_monotonic,
+        )
+        events = _review_events(review_threads_raw, submitted_reviews_raw)
+        created_dt = _parse_ts(created_at)
+        merged_dt = _parse_ts(merged_at)
 
-    rows_out: list[dict[str, Any]] = []
-    prev_commit_dt: dt.datetime | None = None
-    for sample_idx, commit in enumerate(sampled_commits, start=1):
-        commit_sha = commit["hash"]
-        commit_dt = commit["committed_date"]
-        if not _sha_available(repo_dir, commit_sha):
-            return rows_out, {
-                "repo": repo,
-                "instance_id": instance_id,
-                "status": "missing_commit_sha",
-                "commit_sha": commit_sha,
-                "recovery_mode": recovery_mode,
-                "emitted_rows": len(rows_out),
-            }
-        diff_rr = _run_git(repo_dir, ["diff", "--find-renames", "--find-copies=50%", "--binary", str(base_sha), commit_sha])
-        if diff_rr.returncode != 0:
-            return rows_out, {
-                "repo": repo,
-                "instance_id": instance_id,
-                "status": "diff_failed",
-                "commit_sha": commit_sha,
-                "recovery_mode": recovery_mode,
-                "stderr": diff_rr.stderr[:400],
-                "emitted_rows": len(rows_out),
-            }
-        names_rr = _run_git(repo_dir, ["diff", "--name-only", "--find-renames", str(base_sha), commit_sha])
-        if names_rr.returncode != 0:
-            return rows_out, {
-                "repo": repo,
-                "instance_id": instance_id,
-                "status": "name_only_failed",
-                "commit_sha": commit_sha,
-                "recovery_mode": recovery_mode,
-                "stderr": names_rr.stderr[:400],
-                "emitted_rows": len(rows_out),
-            }
-        fnames = [line.strip() for line in names_rr.stdout.splitlines() if line.strip()]
-        patch = diff_rr.stdout
-        events_before = _events_before(events, commit_dt)
-        between = _events_between(events, prev_commit_dt, commit_dt)
-        review_comments_before = sum(1 for e in events_before if e["kind"] == "review_comment")
-        refactor_comments_before = sum(1 for e in events_before if e["kind"] == "review_comment" and e["is_refactor"])
-        submitted_reviews_before = sum(1 for e in events_before if e["kind"] == "submitted_review")
-        approvals_before, changes_requested_before = _count_states(events_before)
-        review_events_between = sum(1 for e in between if e["kind"] == "review_comment")
-        refactor_events_between = sum(1 for e in between if e["kind"] == "review_comment" and e["is_refactor"])
-        submitted_between = sum(1 for e in between if e["kind"] == "submitted_review")
-        features = extract_features(
-            patch,
-            _file_patch_stub(fnames),
-            True,
-            review_comments_before,
-            review_comments_before,
-            "",
-            repo_dir=repo_dir,
-            base_sha=str(base_sha),
-            workspace_dir=None,
-        )
-        risk_proxy, risk_flags = _conway_risk_proxy(features)
-        rows_out.append(
-            {
-                "repo": repo,
-                "instance_id": instance_id,
-                "pull_number": int(pull_number or 0),
-                "base_sha": str(base_sha),
-                "head_sha": str(head_sha or ""),
-                "head_branch": str(head_branch or ""),
-                "total_commits": int(total_commits or len(commits)),
-                "sampled_commit_count": int(len(sampled_commits)),
-                "sampled_commit_rank": int(sample_idx),
-                "history_recovery_mode": recovery_mode,
-                "commit_sha": commit_sha,
-                "commit_idx": int(commit["commit_idx"]),
-                "commit_message_headline": commit["message_headline"],
-                "commit_author_name": commit.get("author_name"),
-                "commit_author_github": commit.get("author_github"),
-                "authored_date": _iso(commit.get("authored_date")),
-                "committed_date": _iso(commit_dt),
-                "pr_created_at": _iso(created_dt),
-                "pr_merged_at": _iso(merged_dt),
-                "snapshot_kind": "cumulative_from_base",
-                "snapshot_changed_files": len(fnames),
-                "review_comments_before": review_comments_before,
-                "refactor_comments_before": refactor_comments_before,
-                "submitted_reviews_before": submitted_reviews_before,
-                "approvals_before": approvals_before,
-                "changes_requested_before": changes_requested_before,
-                "review_events_between_prev_commit": review_events_between,
-                "refactor_events_between_prev_commit": refactor_events_between,
-                "submitted_reviews_between_prev_commit": submitted_between,
-                "linked_review_comments": _linked_comment_count(events, commit_sha),
-                "is_post_review_revision": int((review_events_between + submitted_between) > 0 and commit["commit_idx"] > 1),
-                "conway_risk_proxy": risk_proxy,
-                "conway_risk_flags": risk_flags,
-                **features,
-            }
-        )
-        prev_commit_dt = commit_dt
-    return rows_out, None
+        rows_out: list[dict[str, Any]] = []
+        prev_commit_dt: dt.datetime | None = None
+        for sample_idx, commit in enumerate(sampled_commits, start=1):
+            if time.monotonic() >= deadline_monotonic:
+                return rows_out, {
+                    "repo": repo,
+                    "instance_id": instance_id,
+                    "status": "pr_timeout",
+                    "timeout_sec": PR_TIMEOUT_SEC,
+                    "recovery_mode": recovery_mode,
+                    "emitted_rows": len(rows_out),
+                }
+            commit_sha = commit["hash"]
+            commit_dt = commit["committed_date"]
+            if not _sha_available(repo_dir, commit_sha):
+                return rows_out, {
+                    "repo": repo,
+                    "instance_id": instance_id,
+                    "status": "missing_commit_sha",
+                    "commit_sha": commit_sha,
+                    "recovery_mode": recovery_mode,
+                    "emitted_rows": len(rows_out),
+                }
+            diff_rr = _run_git(
+                repo_dir,
+                ["diff", "--find-renames", "--find-copies=50%", "--binary", str(base_sha), commit_sha],
+                deadline_monotonic=deadline_monotonic,
+            )
+            if diff_rr.returncode != 0:
+                return rows_out, {
+                    "repo": repo,
+                    "instance_id": instance_id,
+                    "status": "diff_failed",
+                    "commit_sha": commit_sha,
+                    "recovery_mode": recovery_mode,
+                    "stderr": diff_rr.stderr[:400],
+                    "emitted_rows": len(rows_out),
+                }
+            names_rr = _run_git(
+                repo_dir,
+                ["diff", "--name-only", "--find-renames", str(base_sha), commit_sha],
+                deadline_monotonic=deadline_monotonic,
+            )
+            if names_rr.returncode != 0:
+                return rows_out, {
+                    "repo": repo,
+                    "instance_id": instance_id,
+                    "status": "name_only_failed",
+                    "commit_sha": commit_sha,
+                    "recovery_mode": recovery_mode,
+                    "stderr": names_rr.stderr[:400],
+                    "emitted_rows": len(rows_out),
+                }
+            fnames = [line.strip() for line in names_rr.stdout.splitlines() if line.strip()]
+            patch = diff_rr.stdout
+            events_before = _events_before(events, commit_dt)
+            between = _events_between(events, prev_commit_dt, commit_dt)
+            review_comments_before = sum(1 for e in events_before if e["kind"] == "review_comment")
+            refactor_comments_before = sum(1 for e in events_before if e["kind"] == "review_comment" and e["is_refactor"])
+            submitted_reviews_before = sum(1 for e in events_before if e["kind"] == "submitted_review")
+            approvals_before, changes_requested_before = _count_states(events_before)
+            review_events_between = sum(1 for e in between if e["kind"] == "review_comment")
+            refactor_events_between = sum(1 for e in between if e["kind"] == "review_comment" and e["is_refactor"])
+            submitted_between = sum(1 for e in between if e["kind"] == "submitted_review")
+            try:
+                features = extract_features(
+                    patch,
+                    _file_patch_stub(fnames),
+                    True,
+                    review_comments_before,
+                    review_comments_before,
+                    "",
+                    repo_dir=repo_dir,
+                    base_sha=str(base_sha),
+                    workspace_dir=None,
+                    deadline_monotonic=deadline_monotonic,
+                )
+            except TimeoutError:
+                return rows_out, {
+                    "repo": repo,
+                    "instance_id": instance_id,
+                    "status": "pr_timeout",
+                    "timeout_sec": PR_TIMEOUT_SEC,
+                    "recovery_mode": recovery_mode,
+                    "commit_sha": commit_sha,
+                    "emitted_rows": len(rows_out),
+                }
+            risk_proxy, risk_flags = _conway_risk_proxy(features)
+            rows_out.append(
+                {
+                    "repo": repo,
+                    "instance_id": instance_id,
+                    "pull_number": int(pull_number or 0),
+                    "base_sha": str(base_sha),
+                    "head_sha": str(head_sha or ""),
+                    "head_branch": str(head_branch or ""),
+                    "total_commits": int(total_commits or len(commits)),
+                    "sampled_commit_count": int(len(sampled_commits)),
+                    "sampled_commit_rank": int(sample_idx),
+                    "history_recovery_mode": recovery_mode,
+                    "commit_sha": commit_sha,
+                    "commit_idx": int(commit["commit_idx"]),
+                    "commit_message_headline": commit["message_headline"],
+                    "commit_author_name": commit.get("author_name"),
+                    "commit_author_github": commit.get("author_github"),
+                    "authored_date": _iso(commit.get("authored_date")),
+                    "committed_date": _iso(commit_dt),
+                    "pr_created_at": _iso(created_dt),
+                    "pr_merged_at": _iso(merged_dt),
+                    "snapshot_kind": "cumulative_from_base",
+                    "snapshot_changed_files": len(fnames),
+                    "review_comments_before": review_comments_before,
+                    "refactor_comments_before": refactor_comments_before,
+                    "submitted_reviews_before": submitted_reviews_before,
+                    "approvals_before": approvals_before,
+                    "changes_requested_before": changes_requested_before,
+                    "review_events_between_prev_commit": review_events_between,
+                    "refactor_events_between_prev_commit": refactor_events_between,
+                    "submitted_reviews_between_prev_commit": submitted_between,
+                    "linked_review_comments": _linked_comment_count(events, commit_sha),
+                    "is_post_review_revision": int((review_events_between + submitted_between) > 0 and commit["commit_idx"] > 1),
+                    "conway_risk_proxy": risk_proxy,
+                    "conway_risk_flags": risk_flags,
+                    **features,
+                }
+            )
+            prev_commit_dt = commit_dt
+        return rows_out, None
+    finally:
+        if overlay_mount is not None:
+            unmount_overlay(overlay_mount)
 
 
 def _metric_summary(deltas: list[float], better: str) -> dict[str, float]:
@@ -766,6 +1009,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=500)
     ap.add_argument("--source-limit", type=int, default=None)
     ap.add_argument("--workers", type=int, default=64)
+    ap.add_argument("--run-tag", default="phase4_7_2")
     ap.add_argument("--out", default=OUT_JSONL)
     ap.add_argument("--summary-out", default=OUT_SUMMARY)
     ap.add_argument("--report-out", default=OUT_REPORT)
@@ -786,6 +1030,7 @@ def main() -> None:
     args = ap.parse_args()
 
     conn = _load_db()
+    _ensure_checkpoint_table(conn)
     order_sql = {
         "newest": "created_at DESC NULLS LAST",
         "oldest": "created_at ASC NULLS LAST",
@@ -848,11 +1093,16 @@ def main() -> None:
         repo_filter=args.repo,
         iid_filter=args.instance_id,
     )
+    target_pr_count = len(rows)
+    checkpoint_by_id = _load_completed_checkpoints(conn, args.run_tag, {str(row[1]) for row in rows})
     conn.close()
-    print(f"Fetched {len(rows)} PR rows")
+    print(f"Fetched {target_pr_count} PR rows")
+    if checkpoint_by_id:
+        print(f"Resuming {len(checkpoint_by_id)} completed PRs from postgres checkpoints", flush=True)
 
     repo_dirs = _repo_dir_map()
     gh_tokens = _load_tokens()
+    repo_cache = RepoRamdiskCache()
     args.progress_log = args.progress_log or _default_progress_log_path(args.out)
     args.partial_summary_out = args.partial_summary_out or _default_partial_summary_path(args.summary_out)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
@@ -861,21 +1111,38 @@ def main() -> None:
     os.makedirs(os.path.dirname(args.progress_log), exist_ok=True)
     os.makedirs(os.path.dirname(args.partial_summary_out), exist_ok=True)
 
-    counters = {"ok_prs": 0, "err_prs": 0, "rows": 0}
-    errors: list[dict[str, Any]] = []
-    all_rows: list[dict[str, Any]] = []
-    total_futs = len(rows)
+    resumed_rows: list[dict[str, Any]] = []
+    resumed_errors: list[dict[str, Any]] = []
+    resumed_ok_prs = 0
+    resumed_err_prs = 0
+    for rec in checkpoint_by_id.values():
+        resumed_rows.extend(rec["snapshot_rows"])
+        if rec["snapshot_rows"] or not rec["error"]:
+            resumed_ok_prs += 1
+        if rec["error"]:
+            resumed_err_prs += 1
+            resumed_errors.append(rec["error"])
+    rows = [row for row in rows if str(row[1]) not in checkpoint_by_id]
+    pending_prs = len(rows)
+    counters = {"ok_prs": resumed_ok_prs, "err_prs": resumed_err_prs, "rows": len(resumed_rows)}
+    errors: list[dict[str, Any]] = list(resumed_errors)
+    all_rows: list[dict[str, Any]] = list(resumed_rows)
+    total_futs = pending_prs
     progress_every = max(1, int(args.progress_every))
 
-    with open(args.out, "w"):
-        pass
+    with open(args.out, "w") as out_f:
+        for row in resumed_rows:
+            out_f.write(json.dumps(row) + "\n")
     with open(args.progress_log, "w") as f:
         f.write(
             json.dumps(
                 {
                     "event": "start",
                     "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
-                    "total_prs": total_futs,
+                    "run_tag": args.run_tag,
+                    "total_prs": target_pr_count,
+                    "resumed_prs": len(checkpoint_by_id),
+                    "pending_prs": pending_prs,
                     "workers": int(args.workers),
                     "out": args.out,
                     "summary_out": args.summary_out,
@@ -886,40 +1153,60 @@ def main() -> None:
             + "\n"
         )
 
-    with open(args.out, "a") as out_f, ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        futs = [pool.submit(_extract_snapshot_rows, row, repo_dirs, gh_tokens, args.max_snapshots) for row in rows]
-        for idx, fut in enumerate(as_completed(futs), start=1):
-            snapshot_rows, err = fut.result()
-            with _WRITE_LOCK:
+    checkpoint_conn: pg8000.native.Connection | None = None
+    try:
+        checkpoint_conn = _load_db()
+        _ensure_checkpoint_table(checkpoint_conn)
+        with open(args.out, "a") as out_f, ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            futs = [pool.submit(_extract_snapshot_rows, row, repo_dirs, gh_tokens, args.max_snapshots, repo_cache) for row in rows]
+            for idx, fut in enumerate(as_completed(futs), start=1):
+                snapshot_rows, err = fut.result()
+                repo = ""
+                instance_id = ""
                 if snapshot_rows:
-                    all_rows.extend(snapshot_rows)
-                    counters["ok_prs"] += 1
-                    counters["rows"] += len(snapshot_rows)
-                    for row in snapshot_rows:
-                        out_f.write(json.dumps(row) + "\n")
-                    out_f.flush()
+                    repo = str(snapshot_rows[0].get("repo") or "")
+                    instance_id = str(snapshot_rows[0].get("instance_id") or "")
                 if err:
-                    counters["err_prs"] += 1
-                    errors.append(err)
-                if idx % 25 == 0:
-                    print(
-                        f"  processed={idx} ok_prs={counters['ok_prs']} err_prs={counters['err_prs']} rows={counters['rows']}",
-                        flush=True,
-                    )
-                if idx % progress_every == 0 or idx == total_futs:
-                    payload = {
-                        "event": "progress",
-                        "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
-                        "processed_prs": idx,
-                        "total_prs": total_futs,
-                        "ok_prs": counters["ok_prs"],
-                        "err_prs": counters["err_prs"],
-                        "rows": counters["rows"],
-                        "progress_fraction": float(idx / total_futs) if total_futs > 0 else 0.0,
-                        "last_error_status": (errors[-1].get("status") if errors else None),
-                    }
-                    _append_progress_log(args.progress_log, payload)
-                    _write_partial_summary(args.partial_summary_out, all_rows, counters, errors, idx, total_futs)
+                    repo = repo or str(err.get("repo") or "")
+                    instance_id = instance_id or str(err.get("instance_id") or "")
+                if instance_id:
+                    _upsert_checkpoint(checkpoint_conn, args.run_tag, repo, instance_id, snapshot_rows, err)
+                with _WRITE_LOCK:
+                    if snapshot_rows:
+                        all_rows.extend(snapshot_rows)
+                        counters["ok_prs"] += 1
+                        counters["rows"] += len(snapshot_rows)
+                        for row in snapshot_rows:
+                            out_f.write(json.dumps(row) + "\n")
+                        out_f.flush()
+                    if err:
+                        counters["err_prs"] += 1
+                        errors.append(err)
+                    processed_total = len(checkpoint_by_id) + idx
+                    if processed_total % 25 == 0:
+                        print(
+                            f"  processed={processed_total} / {target_pr_count} ok_prs={counters['ok_prs']} err_prs={counters['err_prs']} rows={counters['rows']}",
+                            flush=True,
+                        )
+                    if processed_total % progress_every == 0 or idx == total_futs:
+                        payload = {
+                            "event": "progress",
+                            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+                            "run_tag": args.run_tag,
+                            "processed_prs": processed_total,
+                            "total_prs": target_pr_count,
+                            "ok_prs": counters["ok_prs"],
+                            "err_prs": counters["err_prs"],
+                            "rows": counters["rows"],
+                            "progress_fraction": float(processed_total / target_pr_count) if target_pr_count > 0 else 0.0,
+                            "last_error_status": (errors[-1].get("status") if errors else None),
+                        }
+                        _append_progress_log(args.progress_log, payload)
+                        _write_partial_summary(args.partial_summary_out, all_rows, counters, errors, processed_total, target_pr_count)
+    finally:
+        if checkpoint_conn is not None:
+            checkpoint_conn.close()
+        repo_cache.cleanup()
 
     all_rows.sort(key=lambda r: (r["repo"], r["instance_id"], r["commit_idx"]))
     with open(args.out, "w") as f:
@@ -938,8 +1225,9 @@ def main() -> None:
         {
             "event": "done",
             "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "processed_prs": total_futs,
-            "total_prs": total_futs,
+            "run_tag": args.run_tag,
+            "processed_prs": target_pr_count,
+            "total_prs": target_pr_count,
             "ok_prs": counters["ok_prs"],
             "err_prs": counters["err_prs"],
             "rows": counters["rows"],
