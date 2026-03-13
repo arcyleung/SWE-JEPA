@@ -408,19 +408,57 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 
 ---
 
-### Phase 3: Conditional Code Generation (Stretch Goal)
+### Phase 3: Embedding Retrieval Validation ✅
 
-**Goal**: Test whether student latent representations can condition actual code generation.
+**Goal**: Test whether SWE-JEPA representations are specific enough to support large-scale
+embedding retrieval. The question is no longer "does the student predict the right *direction* in
+latent space?" but "is that latent precise enough to retrieve the matching implementation from a
+real corpus?"
 
-#### Experiment 3.1: Latent-conditioned decoder
+#### Experiment 3.0: Qwen3-8B-base teacher + InfoNCE
 
-**Steps**:
+**Approach**: Upgrade the teacher and retrieval target together. The student sees only function
+signature token hidden states from a frozen Qwen3-8B-base teacher (layer 18) and is trained with
+InfoNCE to predict a 4096-dim body embedding. Critically, the target body embedding is extracted
+from the body-token positions of a **full signature+body teacher forward pass**, not from body
+tokens in isolation. This makes the target `f(body | sig_context)`, so the student must predict a
+contextualised implementation latent from the signature alone.
 
-1. Train a small decoder (GPT-2 scale) that takes the student's predicted latent at a masked position and generates the corresponding code tokens autoregressively
-2. The decoder receives: (a) the student's latent vector, (b) the function signature, (c) surrounding context
-3. Evaluate generated code with: pass@k on unit tests, functional correctness, comparison to teacher-only generation
+**Setup** (see `docs/phase3_0_qwen3_8b_teacher.md`):
+- **Frozen teacher**: Qwen3-8B-base, layer 18, bf16
+- **Student**: `SigPredictorV2`, ~63.3M trainable params, 2-layer transformer encoder, InfoNCE-only training (`λ=0`)
+- **Dataset**: 42,047 train / 4,615 val / 2,969 test functions
+- **Retrieval corpus**: 49,631 functions from 150 repos
+- **Contrastive scale**: 32 GPUs × 64 batch = 2048 negatives per step
 
-**Success criteria**: The latent-conditioned decoder should produce functionally correct code at a higher rate or lower compute cost than a baseline model of equivalent total parameter count generating code from scratch.
+**Results**:
+
+| Metric | Val | Test | Baseline |
+|--------|:---:|:----:|:--------:|
+| Cosine similarity | **0.4748** | **0.4768** | random: 0.0133 |
+| Rank@1 | **19.11%** | **28.09%** | random: 0.0020% |
+| Rank@5 | **36.77%** | **45.47%** | — |
+| Rank@10 | **47.52%** | **51.77%** | — |
+
+**Key finding**: This is the first phase where the JEPA representation clearly works as a
+retrieval object rather than merely a coarse similarity signal. Relative to the best prior 3B
+student run (Exp 2.2, 4.20% val Rank@10), Exp 3.0 improves to **47.52% val Rank@10** — an
+approximately **11×** gain. The decisive factor was **target representation quality**: body-only
+targets were highly anisotropic and clustered near a centroid, which made contrastive retrieval
+fail. Feeding `signature + body` to the teacher before extracting body-token latents restores
+target isotropy and makes the predicted space discriminative.
+
+**Success criteria**:
+1. Val Rank@1 > 5% → achieved **19.11%**
+2. Val Rank@10 > 20% → achieved **47.52%**
+3. Test Rank@1 > 5% → achieved **28.09%**
+4. Test Rank@10 > 20% → achieved **51.77%**
+
+**Implication**: The core representational claim is now supported for the embedding-retrieval
+setting. A student that sees only signature context can predict a body-oriented latent specific
+enough to retrieve the matching implementation from a 49k-function corpus. That makes downstream
+quality probing the next bottleneck, not basic representational separability. Latent-conditioned
+decoding is therefore deferred until after the defect-prediction and efficiency validations.
 
 ---
 
@@ -430,7 +468,7 @@ Loss: SmoothL1(predicted_body_embedding, actual_body_embedding)
 
 #### Experiment 4.1: Defect prediction probe *(next experiment)*
 
-**Motivation**: Exp 3.0 achieves 47.52% Rank@10, confirming the JEPA representations are highly discriminative for retrieval. The next question is whether they encode **defect-proneness** — a non-functional property not visible in the function signature alone, but which expert engineers infer from signature-level cues (interface complexity, naming, coupling). This directly tests the proposal's central claim that the JEPA objective forces emergence of abstract software engineering reasoning.
+**Motivation**: Exp 3.0 achieves **47.52% val Rank@10** and **51.77% test Rank@10**, confirming the JEPA representations are highly discriminative for retrieval. The next question is whether they encode **defect-proneness** — a non-functional property not visible in the function signature alone, but which expert engineers infer from signature-level cues (interface complexity, naming, coupling). This directly tests the proposal's central claim that the JEPA objective forces emergence of abstract software engineering reasoning.
 
 **Data**: `followups_function` table — 62,071 rows linking feature PR function implementations to followup PRs across 144 repos.
 
@@ -482,6 +520,133 @@ Sensitivity: repeat with hunk_overlap_fraction > 0.1 (strict) vs any overlap (le
 
 ---
 
+### Phase 5: Cheap RL on the Small Steerer
+
+**Goal**: Shift reinforcement learning away from the large coder model and onto a compact
+steerer that is cheap to train, cheap to update, and model-agnostic at deployment. The large
+coder stays frozen; at inference time the steerer scores candidate attempts, gates retries,
+and injects targeted steering hints. This is the software-engineering analogue of the
+small-guides-large pattern from ThinkLogit, but applied at the trajectory/action level rather
+than the token/logit level.
+
+#### Bootstrap prospect from Experiments 4.7.1-4.7.3
+
+| Source | Usable signal for RL bootstrap | Value for 5.1 / 5.2 | Current limitation |
+|--------|--------------------------------|---------------------|--------------------|
+| **4.7.1 paired cohort eval** | Paired baseline-vs-steered attempts on the same task; judge-ready preference pairs; on-policy trajectory comparisons | Best source for pairwise reward learning and reranking-policy calibration | This paired dataset is the right supervision, but it must be collected explicitly; the earlier `belief.MD` variant hurt patch yield and should stay removed |
+| **4.7.2 refinement history** | `31,326` merged PRs, `104,994` commit snapshots, `17,578` review-response transitions | Best source for pretraining a value / potential function over PR-state transitions | Acceptance is constant, surviving commit history is incomplete, and the current history summary only marginally helps `acceptance_proxy` while hurting `refactor_requested` |
+| **4.7.3 closed PR ingestion** | `18,722` closed/unmerged PRs with `prs_copy`-compatible metadata | Enables a true accepted-vs-closed terminal reward model on merged + closed data | `patch` and `file_patches` are still fetch-required, and review-thread coverage is sparse for dense process supervision |
+
+**Assessment**: The prospect is **strong for Exp 5.1** and **moderate for Exp 5.2**. The
+combined 4.7.x data is already good enough to bootstrap a cheap steerer that learns terminal
+merge-readiness and review-friction preferences without touching the large coder's weights.
+But it is not yet a complete dense-RL dataset for process-level credit assignment: 4.7.2 gives
+useful transition structure, not a clean step-level oracle. That suggests a staged plan:
+terminal reward first, process reward second.
+
+#### Experiment 5.1: Outcome-Reward Steerer for Inference-Time Guidance
+
+**Goal**: Train a small steerer as an outcome reward model (ORM) and lightweight policy over
+PR states, then use it to guide a large frozen coder at inference time. The training target is
+not "next token"; it is "which attempt is more likely to be merged with less friction?"
+
+**Why this is the right first RL target**:
+- The action space is small and cheap: retry vs submit, attempt reranking, scope tightening,
+  test emphasis, interface-audit hints, and split-patch suggestions.
+- The reward signal is available from historical PR outcomes once 4.7.3 is joined with merged
+  PRs.
+- The steerer can be retrained frequently and deployed across different coder backbones without
+  model-specific SFT or RLHF.
+
+**Bootstrap training loop**:
+1. **Terminal reward pretraining**:
+   - train acceptance / refactor / reward heads on combined `prs_copy` + `prs_copy_closed`
+   - use 4.7.3 to supply negative terminal outcomes and 4.7.2/5.1 features to supply Conway-style state channels
+2. **Pairwise preference calibration**:
+   - use 4.7.1 paired runs to form `(attempt_a, attempt_b, preferred)` examples
+   - fit a pairwise reward head so the steerer learns "which full attempt is better" rather than only absolute acceptance likelihood
+3. **Cheap RL / contextual-bandit stage**:
+   - freeze the large coder
+   - let the steerer choose hints, retry thresholds, and attempt reranking under a fixed rollout budget
+   - update only the small steerer from observed reward deltas
+4. **Inference-time deployment**:
+   - generate `N` attempts from the large coder
+   - score each attempt with the steerer
+   - keep the best or early-stop when acceptance / friction thresholds are met
+
+**State / action / reward design**:
+- **State**: patch scope, cross-module spread, trust-boundary crossings, API stress, review friction proxies, and JEPA-derived followup risk
+- **Actions**: prompt-level steer hints, retry / stop decisions, attempt reranking, optional temperature or effort-budget adjustments if the runner exposes them
+- **Reward**: merged-vs-closed outcome, low-friction completion, low refactor-demand risk, and pairwise preference wins from 4.7.1
+
+**Prospect**: **High**. This is the cleanest use of 4.7.1-4.7.3 because it relies on terminal
+or per-attempt signals, which those datasets already capture reasonably well. It also matches
+the deployment story: RL the cheap steerer once, then use it with any large coder at test time
+instead of SFT/RL on the coder itself.
+
+**Success criteria**:
+
+| Criterion | Target |
+|-----------|--------|
+| Frozen large coder + ORM steerer > no-steerer baseline on `AcceptProxy@1` | +5 pp absolute |
+| Frozen large coder + ORM steerer > supervised Exp 4.7 steerer | consistent improvement |
+| Pairwise reward head improves reranking vs acceptance-only head | yes |
+| Training cost vs full-model RL/SFT | at least an order of magnitude cheaper |
+
+#### Experiment 5.2: Process Reward Steerer with Potential-Based Shaping
+
+**Goal**: Extend the 5.1 outcome-reward steerer into a process reward model (PRM) that gives
+cheap step-level feedback during agent trajectories, while still keeping the large coder
+frozen.
+
+**Bootstrap path from 4.7.x data**:
+- **4.7.2** provides the main pretraining signal for a value / potential function `Phi(s)` over
+  observable PR states
+- **4.7.1** provides paired on-policy agent trajectories to calibrate whether higher `Phi(s)`
+  actually corresponds to better attempt outcomes in the mini-swe-agent scaffold
+- **4.7.3** anchors the terminal reward so dense shaping does not drift away from actual
+  merge outcomes
+
+**Core shaping rule**:
+
+```text
+r_dense(t) = gamma * Phi(s_{t+1}) - Phi(s_t)
+```
+
+The steerer reward head from 5.1 supplies `Phi(.)`. The important point is that **only the
+steerer is trained or updated**; the large coder remains unchanged and is merely guided by the
+steerer's dense score during exploration.
+
+**Prospect**: **Moderate**. There is enough data to bootstrap `Phi(.)`, but not enough evidence
+yet that the current 4.7.2 trajectory summaries isolate useful step-level credit assignment on
+their own. The completed 4.7.2 readout is cautionary: the trajectory-aware model only nudged
+`acceptance_proxy` upward (`0.960 -> 0.962` AUROC) and hurt the rarer `refactor_requested`
+target (`0.901 -> 0.897`). So 5.2 should be framed as a **warm-started shaping experiment**,
+not as a claim that historical PR commit sequences already solve process reward modeling.
+
+**Recommended sequencing**:
+1. Make 5.1 succeed first on terminal reranking and retry control
+2. Use 4.7.2 only to pretrain `Phi(.)`
+3. Refit `Phi(.)` on fresh 5.1 rollout trajectories before trusting it for dense shaping
+4. Advance to 5.2 only if the shaped policy beats the 5.1 ORM on sample efficiency
+
+**Success criteria**:
+
+| Criterion | Target |
+|-----------|--------|
+| PRM steerer > ORM steerer on `AcceptProxy@1` | +3 pp absolute |
+| PRM steerer reaches the same acceptance proxy with fewer attempts | yes |
+| No evidence of reward hacking or loop farming | confirmed by trajectory audit |
+| Dense shaping trained only on the small steerer remains cheaper than coder RL | yes |
+
+**Net recommendation**: Use 4.7.1-4.7.3 to bootstrap RL on the **small steerer**, not the large
+coder. The data is already sufficient for a credible 5.1 outcome-reward loop and probably
+sufficient for a guarded 5.2 shaping experiment. It is not strong enough to justify jumping
+straight to SFT/RL on the large coder, which would be far more expensive, less portable across
+models, and harder to debug when the reward is wrong.
+
+---
+
 ## Risks & Mitigations
 
 | Risk | Likelihood | Mitigation |
@@ -492,6 +657,8 @@ Sensitivity: repeat with hunk_overlap_fraction > 0.1 (strict) vs any overlap (le
 | Student doesn't learn abstract properties (just memorizes surface patterns) | Medium | Evaluate with held-out repos / languages; test invariance to refactoring |
 | Latent-to-token decoding loses critical details | Medium | Hybrid approach: latent provides high-level plan, decoder has access to full context |
 | Organizational/churn signals not present in code text alone | Medium | Enrich training data with git metadata; use PR-level context not just file-level |
+| 4.7.2 trajectory history is too noisy for dense reward shaping | High | Use 4.7.2 only to warm-start `Phi(.)`; recalibrate on fresh 5.1 rollouts before enabling 5.2 |
+| Small steerer overfits one coder or prompt scaffold | Medium | Evaluate the same steerer against multiple frozen coder backbones and keep actions model-agnostic |
 
 ---
 
@@ -502,13 +669,16 @@ Sensitivity: repeat with hunk_overlap_fraction > 0.1 (strict) vs any overlap (le
 | Phase 0: Extraction & validation | 1-2 GPU-days (inference only) | 28K function embeddings from real PRs | 1-2 weeks |
 | Phase 1: Student training | 1-4 GPU-days (training small models) | Same corpus + teacher targets | 2-3 weeks |
 | Phase 2: Ablations | 2-8 GPU-days | Same | 2-3 weeks |
-| Phase 3: Decoder | 4-16 GPU-days | + unit test data | 3-4 weeks |
+| Phase 3: Retrieval validation | 4-16 GPU-days | 49.6K functions from 150 repos | 3-4 weeks |
+| Phase 4: Downstream validation | 2-6 GPU-days | followup-linked functions across 144 repos | 2-3 weeks |
+| Phase 5: Steerer RL + agentic eval | 4-12 GPU-days | 4.7.1 paired runs + 4.7.2 histories + 4.7.3 closed PRs | 3-5 weeks |
 
 ---
 
 ## Key References
 
 - **ThinkLogit**: Zhang et al., "Logit Arithmetic Elicits Long Reasoning Capabilities Without Training" (arxiv:2510.09354, 2025)
+- **Potential-based shaping**: Ng, Harada, Russell, "Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping" (ICML, 1999)
 - **RAIM**: Liu et al., "Architecture-Aware Multi-Design Generation for Repository-Level Feature Addition" (arXiv:2603.01814, 2026) — Generates multiple architecture-consistent design candidates for repo-level feature additions; SWE-JEPA provides the longitudinal quality signal (followup-debt risk) that RAIM's static architecture ranking lacks
 - **SALT**: Li et al., "Rethinking JEPA: Compute-Efficient Video SSL with Frozen Teachers" (arxiv:2509.24317, 2025)
 - **METR maintainer-review gap**: Whitfill et al., "[Many SWE-bench-Passing PRs Would Not Be Merged into Main](https://metr.org/notes/2026-03-10-many-swe-bench-passing-prs-would-not-be-merged-into-main/)" (METR research note, March 10, 2026) — Maintainer merge decisions lag automated SWE-bench pass rates by 24.2 percentage points on average; motivates objectives beyond benchmark correctness toward merge readiness
