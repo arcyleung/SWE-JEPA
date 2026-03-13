@@ -24,7 +24,7 @@ import re
 import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
@@ -40,6 +40,7 @@ OUT_JSONL    = os.path.join(ROOT, "data", "conway_patch_features.jsonl")
 OUT_SUMMARY  = os.path.join(ROOT, "data", "conway_patch_features_summary.json")
 REPOS_BASE   = "/shared_workspace_mfs/repos"
 GIT_TIMEOUT_SEC = int(os.environ.get("CONWAY_GIT_TIMEOUT_SEC", os.environ.get("PR_REFINEMENT_GIT_TIMEOUT_SEC", "600")))
+BLAME_CACHE_MAX_ENTRIES = int(os.environ.get("CONWAY_BLAME_CACHE_MAX_ENTRIES", "2048"))
 
 # ── Tree-sitter setup ──────────────────────────────────────────────────────
 
@@ -146,6 +147,78 @@ def _ts_nodes(node, *types):
             yield cur
         if cur.children:
             stack.extend(reversed(cur.children))
+
+
+class _BlameRangeCache:
+    def __init__(self, max_entries: int) -> None:
+        self.max_entries = max(0, int(max_entries))
+        self._lock = threading.Lock()
+        self._data: OrderedDict[tuple[str, str, str], tuple[tuple[int, int, str], ...]] = OrderedDict()
+        self._inflight: dict[tuple[str, str, str], threading.Event] = {}
+        self._stats = Counter()
+
+    def get_or_compute(
+        self,
+        key: tuple[str, str, str],
+        compute_fn,
+    ) -> tuple[tuple[int, int, str], ...]:
+        if self.max_entries <= 0:
+            self._stats["disabled"] += 1
+            return compute_fn()
+        event: threading.Event | None = None
+        should_compute = False
+        while True:
+            with self._lock:
+                cached = self._data.get(key)
+                if cached is not None:
+                    self._data.move_to_end(key)
+                    self._stats["hits"] += 1
+                    return cached
+                event = self._inflight.get(key)
+                if event is None:
+                    event = threading.Event()
+                    self._inflight[key] = event
+                    self._stats["misses"] += 1
+                    should_compute = True
+                    break
+                self._stats["waits"] += 1
+            event.wait()
+        assert event is not None
+        try:
+            value = compute_fn()
+        finally:
+            with self._lock:
+                self._inflight.pop(key, None)
+                event.set()
+        with self._lock:
+            self._data[key] = value
+            self._data.move_to_end(key)
+            self._stats["stores"] += 1
+            while len(self._data) > self.max_entries:
+                self._data.popitem(last=False)
+                self._stats["evictions"] += 1
+        return value
+
+    def stats(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "enabled": int(self.max_entries > 0),
+                "max_entries": int(self.max_entries),
+                "entries": int(len(self._data)),
+                "hits": int(self._stats.get("hits", 0)),
+                "misses": int(self._stats.get("misses", 0)),
+                "waits": int(self._stats.get("waits", 0)),
+                "stores": int(self._stats.get("stores", 0)),
+                "evictions": int(self._stats.get("evictions", 0)),
+                "disabled": int(self._stats.get("disabled", 0)),
+            }
+
+
+_BLAME_RANGE_CACHE = _BlameRangeCache(BLAME_CACHE_MAX_ENTRIES)
+
+
+def blame_cache_stats() -> dict[str, int]:
+    return _BLAME_RANGE_CACHE.stats()
 
 # ── Import classification ──────────────────────────────────────────────────
 
@@ -662,6 +735,8 @@ def _git_run(repo_dir: str, args: list[str], deadline_monotonic: float | None = 
             ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
@@ -678,6 +753,57 @@ def _git_show_text(repo_dir: str, sha: str, path: str, deadline_monotonic: float
         return ""
     rr = _git_run(repo_dir, ["show", f"{sha}:{path}"], deadline_monotonic=deadline_monotonic)
     return rr.stdout if rr.returncode == 0 else ""
+
+
+def _repo_blame_key(repo_dir: str) -> str:
+    return os.path.basename(os.path.normpath(repo_dir)) or repo_dir
+
+
+def _parse_incremental_blame_ranges(stdout: str) -> tuple[tuple[int, int, str], ...]:
+    ranges: list[tuple[int, int, str]] = []
+    current_start: int | None = None
+    current_count = 0
+    current_author = ""
+    for raw in stdout.splitlines():
+        parts = raw.split()
+        if len(parts) >= 4 and re.fullmatch(r"[0-9a-f]{7,40}", parts[0]):
+            current_start = int(parts[2])
+            current_count = int(parts[3])
+            current_author = ""
+            continue
+        if raw.startswith("author-mail "):
+            current_author = raw.split(" ", 1)[1].strip()
+            continue
+        if raw.startswith("filename "):
+            if current_start is not None and current_count > 0 and current_author:
+                ranges.append((current_start, current_start + current_count - 1, current_author))
+            current_start = None
+            current_count = 0
+            current_author = ""
+    return tuple(ranges)
+
+
+def _blame_ranges(
+    repo_dir: str | None,
+    base_sha: str | None,
+    old_path: str | None,
+    deadline_monotonic: float | None = None,
+) -> tuple[tuple[int, int, str], ...]:
+    if not repo_dir or not base_sha or not old_path:
+        return ()
+    key = (_repo_blame_key(repo_dir), str(base_sha), str(old_path))
+
+    def _compute() -> tuple[tuple[int, int, str], ...]:
+        rr = _git_run(
+            repo_dir,
+            ["blame", "--incremental", str(base_sha), "--", str(old_path)],
+            deadline_monotonic=deadline_monotonic,
+        )
+        if rr.returncode != 0:
+            return ()
+        return _parse_incremental_blame_ranges(rr.stdout)
+
+    return _BLAME_RANGE_CACHE.get_or_compute(key, _compute)
 
 
 def _read_workspace_text(workspace_dir: str | None, path: str) -> str:
@@ -850,35 +976,19 @@ def _blame_metrics(
             "blame_author_entropy": 0.0,
             "blame_multi_author_hunks": 0.0,
         }
-    rr = _git_run(
+    blame_ranges = _blame_ranges(
         repo_dir,
-        ["blame", "--line-porcelain", base_sha, "--", file_diff.old_path],
+        base_sha,
+        file_diff.old_path,
         deadline_monotonic=deadline_monotonic,
     )
-    if rr.returncode != 0:
+    if not blame_ranges:
         return {
             "blame_unique_authors": 0.0,
             "blame_top_author_share": 0.0,
             "blame_author_entropy": 0.0,
             "blame_multi_author_hunks": 0.0,
         }
-
-    line_to_author: dict[int, str] = {}
-    current_author = ""
-    current_line = None
-    for line in rr.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and re.fullmatch(r"[0-9a-f]{7,40}", parts[0]):
-            try:
-                current_line = int(parts[2])
-            except Exception:
-                current_line = None
-            continue
-        if line.startswith("author-mail "):
-            current_author = line.split(" ", 1)[1].strip()
-            if current_line is not None:
-                line_to_author[current_line] = current_author
-                current_line = current_line + 1
 
     counts: Counter = Counter()
     multi_author_hunks = 0
@@ -888,12 +998,14 @@ def _blame_metrics(
         start = hunk.old_start
         end = hunk.old_start + hunk.old_count - 1
         hunk_authors: Counter = Counter()
-        for ln in range(start, end + 1):
-            author = line_to_author.get(ln)
-            if not author:
+        for blame_start, blame_end, author in blame_ranges:
+            overlap_start = max(start, blame_start)
+            overlap_end = min(end, blame_end)
+            if overlap_end < overlap_start or not author:
                 continue
-            counts[author] += 1
-            hunk_authors[author] += 1
+            touched = overlap_end - overlap_start + 1
+            counts[author] += touched
+            hunk_authors[author] += touched
         if len(hunk_authors) > 1:
             multi_author_hunks += 1
     total = sum(counts.values())

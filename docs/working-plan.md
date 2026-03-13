@@ -695,6 +695,98 @@ Initial readout (2-node Slurm smoke, 41 PRs / 239 snapshots / 25 review-response
 - Post-review transitions were especially noisy; surviving visible PR commit history is likely an
   incomplete proxy when authors squash or force-push away earlier revisions.
 
+### Experiment 4.7.3 — Closed PR Corpus Ingestion (`prs_copy_closed`)
+
+#### Motivation
+
+Exp 4.7.2 only used merged PRs from `prs_copy`, which makes `accepted` constant and weakens any
+attempt to train a true merge-likelihood head from refinement history. The next step is to add
+**closed/unmerged PRs** into a parallel table with a `prs_copy`-compatible schema so the same
+feature extraction and steerer training code can operate on positive and negative outcomes.
+
+#### Data source
+
+Primary corpus:
+- `/shared_workspace_mfs/akki/scratch_mfs/arthur-task/enriched-all-unmerged`
+
+This is a repo-sharded JSONL export of closed PRs with:
+- REST PR metadata (`title`, `body`, `base`, `head`, `patch_url`, `comments_url`, etc.)
+- GraphQL enrichment (`pull_request.comments`, `reviews`, `reviewThreads`, `commits`,
+  `closingIssuesReferences`, `changedFiles`, `additions`, `deletions`)
+- top-level lightweight classifier outputs (`pr_type`, `is_feature`, `confidence`)
+
+#### Core question
+
+How much of the `prs_copy` schema can be:
+1. recovered directly from the local JSONL,
+2. recovered by light GitHub API fetches using `crawl_tokens.yaml`, and
+3. not recovered at all from this corpus?
+
+#### Target table
+
+Create `prs_copy_closed` with the same columns as `prs_copy` and upsert one row per closed PR.
+
+Schema compatibility target:
+- exact column names matching `prs_copy`
+- same JSONB field shapes where feasible (`commits`, `comments`, `review_threads`, `file_patches`)
+- nullable placeholders for unavailable SWE-bench-style fields
+
+#### Recovery plan
+
+Direct/derived from local JSONL:
+- `repo`, `pull_number`, `repo_id`, `base_sha`, `head_sha`, `base_branch`, `head_branch`
+- `pr_title`, `pr_body`, `pr_url`, `pr_state`, `pr_is_draft`, `pr_author`, `pr_labels`
+- `created_at`, `updated_at`, `total_commits`, `commits`
+- `total_comments`, `comments`
+- `total_review_threads`, `review_threads`
+- `requested_reviewers`, `submitted_reviews`
+- `additions`, `deletions`, `changed_files`
+- `linked_issues`, `closing_issue_id`
+- `stars`, `forks`, `primary_language`
+- `pr_category`, `pr_category_confidence`, `pr_category_reasoning`
+
+Recovered by fetch using `crawl_tokens.yaml`:
+- `patch` via `patch_url`
+- `file_patches` via `GET /repos/{owner}/{repo}/pulls/{number}/files`
+- repair partial `commits` payloads via `commits_url`
+- repair partial `comments` payloads via `comments_url`
+
+Expected null/unavailable in 4.7.3:
+- `problem_statement`
+- `hints_text`
+- `pass_to_pass`
+- `fail_to_pass`
+- `merged_by`
+
+#### Implementation plan
+
+1. `ingest_prs_copy_closed.py`
+   - normalize the unmerged JSONL corpus to `prs_copy` columns
+   - optionally fetch missing patch / file / comment artifacts
+   - create `prs_copy_closed` if absent
+   - upsert rows idempotently on `(repo, pull_number)`
+
+2. `docs/phase4_7_3_closed_pr_ingestion.md`
+   - report per-column recoverability:
+     - direct
+     - fetchable
+     - unavailable
+   - quantify partial GraphQL tails (`commits`, `comments`, `reviewThreads`)
+
+3. Re-run downstream patch-feature and steerer pipelines against:
+   - `prs_copy` (merged)
+   - `prs_copy_closed` (closed)
+   - combined merged + closed dataset
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| Closed PR rows inserted into `prs_copy_closed` | >20k |
+| Direct + fetchable coverage for core modeling columns (`patch`, `file_patches`, `commits`, `comments`) | >95% |
+| Same downstream feature extractor can run on `prs_copy_closed` without schema fork | yes |
+| Acceptance head retrained on merged + closed PRs | enabled |
+
 ### Experiment 5.1 — RL on Steerer (Conway-Aware State Policy)
 
 #### Motivation

@@ -29,9 +29,9 @@ import yaml
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
-# ── Data paths ─────────────────────────────────────────────────────────────
+# ── Data paths (overrideable via CLI) ──────────────────────────────────────
 
-TRAJ_DIR_STEERED  = os.path.join(ROOT, "data", "phase4_7_trajectories_steered_7k")
+TRAJ_DIR_STEERED   = os.path.join(ROOT, "data", "phase4_7_trajectories_steered_7k")
 PATCH_DIR_BASELINE = os.path.join(ROOT, "data", "phase4_7_patches_feature_sl80")
 
 # ── LiteLLM setup ──────────────────────────────────────────────────────────
@@ -120,35 +120,40 @@ def _extract_problem_from_traj(traj_path: str) -> str:
 
 # ── Pair building ──────────────────────────────────────────────────────────
 
-def build_pairs(limit: int | None = None, seed: int = 42) -> list[dict]:
+def build_pairs(
+    limit: int | None = None,
+    seed: int = 42,
+    patch_dir: str = PATCH_DIR_BASELINE,
+    steered_traj_dir: str = TRAJ_DIR_STEERED,
+) -> list[dict]:
     """Find instances with both a baseline patch and an extractable steered patch."""
     rng = random.Random(seed)
 
     # Index baseline patches by iid_pr key
     baseline_index: dict[str, str] = {}
-    for fname in os.listdir(PATCH_DIR_BASELINE):
+    for fname in os.listdir(patch_dir):
         if not fname.endswith(".patch"):
             continue
-        if os.path.getsize(os.path.join(PATCH_DIR_BASELINE, fname)) < 50:
+        if os.path.getsize(os.path.join(patch_dir, fname)) < 50:
             continue
         key = fname[:-len(".patch")]
-        baseline_index[key] = os.path.join(PATCH_DIR_BASELINE, fname)
+        baseline_index[key] = os.path.join(patch_dir, fname)
 
     # Index steered trajs by iid_pr
     from collections import defaultdict as dd
     steered_index: dict[str, list[tuple[int, str]]] = dd(list)
-    for fname in os.listdir(TRAJ_DIR_STEERED):
+    for fname in os.listdir(steered_traj_dir):
         if "__a" not in fname or not fname.endswith(".traj.json"):
             continue
         base = fname[:-len(".traj.json")]
         iid_pr, att_str = base.rsplit("__a", 1)
-        steered_index[iid_pr].append((int(att_str), os.path.join(TRAJ_DIR_STEERED, fname)))
+        steered_index[iid_pr].append((int(att_str), os.path.join(steered_traj_dir, fname)))
 
     pairs: list[dict] = []
     for iid_pr, atts in steered_index.items():
         if iid_pr not in baseline_index:
             continue
-        # Pick the first (lowest index) attempt as "best" steered
+        # Pick the best-scored attempt (lowest attempt index = attempt 0 = best kept by runner)
         _, best_traj = sorted(atts)[0]
         steered_patch = _extract_patch_from_traj(best_traj)
         if not steered_patch or len(steered_patch.strip()) < 50:
@@ -408,21 +413,30 @@ def _compute_summary(results: list[dict]) -> dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--limit",       type=int, default=100,
-                    help="Max pairs to evaluate (default 100)")
-    ap.add_argument("--concurrency", type=int, default=8)
-    ap.add_argument("--seed",        type=int, default=42)
-    ap.add_argument("--models-yaml", default=os.path.join(ROOT, "models.yaml"))
-    ap.add_argument("--judge-model", default="qwen3.5_397b_a17b")
-    ap.add_argument("--out",         default=os.path.join(ROOT, "data", "phase4_7_judge_scores.jsonl"))
-    ap.add_argument("--summary",     default=os.path.join(ROOT, "data", "phase4_7_judge_summary.json"))
+    ap.add_argument("--limit",             type=int, default=None,
+                    help="Max pairs to evaluate (default: all)")
+    ap.add_argument("--concurrency",       type=int, default=8)
+    ap.add_argument("--seed",              type=int, default=42)
+    ap.add_argument("--models-yaml",       default=os.path.join(ROOT, "models.yaml"))
+    ap.add_argument("--judge-model",       default="qwen3.5_397b_a17b")
+    ap.add_argument("--baseline-patch-dir", default=PATCH_DIR_BASELINE,
+                    help="Directory containing baseline .patch files")
+    ap.add_argument("--steered-traj-dir",  default=TRAJ_DIR_STEERED,
+                    help="Directory containing steered .traj.json files")
+    ap.add_argument("--out",     default=os.path.join(ROOT, "data", "phase4_7_judge_scores.jsonl"))
+    ap.add_argument("--summary", default=os.path.join(ROOT, "data", "phase4_7_judge_summary.json"))
     args = ap.parse_args()
 
     model_cfg = _load_model_cfg(args.models_yaml, args.judge_model)
     print(f"Judge model: {args.judge_model}  ({model_cfg['litellm_params']['model']})")
 
     print("Building comparable pairs...")
-    pairs = build_pairs(limit=args.limit, seed=args.seed)
+    pairs = build_pairs(
+        limit=args.limit,
+        seed=args.seed,
+        patch_dir=args.baseline_patch_dir,
+        steered_traj_dir=args.steered_traj_dir,
+    )
     print(f"  Found {len(pairs)} valid pairs (baseline + steered patch both non-empty)")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)

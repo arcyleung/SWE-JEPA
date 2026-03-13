@@ -19,18 +19,21 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
+import sys
 import threading
+import tempfile
 import time
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter, defaultdict
 from typing import Any
 
 import pg8000.native
 import yaml
 
 from build_pr_mdp_dataset_v51 import REFACTOR_RE
-from extract_conway_patch_features import extract_features, _repo_dir_map
+from extract_conway_patch_features import extract_features, _repo_dir_map, blame_cache_stats
 from repo_overlay_cache import OverlayMount, RepoRamdiskCache, unmount_overlay
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -40,8 +43,13 @@ OUT_JSONL = os.path.join(ROOT, "data", "phase4_7_2_pr_refinement_history.jsonl")
 OUT_SUMMARY = os.path.join(ROOT, "data", "phase4_7_2_pr_refinement_history_summary.json")
 OUT_REPORT = os.path.join(ROOT, "docs", "phase4_7_2_pr_refinement_history.md")
 GIT_TIMEOUT_SEC = int(os.environ.get("PR_REFINEMENT_GIT_TIMEOUT_SEC", "600"))
-PR_TIMEOUT_SEC = int(os.environ.get("PR_REFINEMENT_PR_TIMEOUT_SEC", "600"))
+PR_TIMEOUT_SEC = int(os.environ.get("PR_REFINEMENT_PR_TIMEOUT_SEC", "300"))
+WORKER_WATCHDOG_GRACE_SEC = int(os.environ.get("PR_REFINEMENT_WATCHDOG_GRACE_SEC", "15"))
 CHECKPOINT_TABLE = "pr_refinement_history_checkpoints"
+MERGE_HEADLINE_RE = re.compile(
+    r"^(merge(?:d)?\b|merge pull request\b|merge remote-tracking branch\b|auto-merge\b)",
+    re.IGNORECASE,
+)
 
 LOWER_BETTER_METRICS = [
     "conway_risk_proxy",
@@ -70,6 +78,38 @@ HIGHER_BETTER_METRICS = [
 ]
 
 _WRITE_LOCK = threading.Lock()
+_ROW_KEYS = (
+    "repo",
+    "instance_id",
+    "pull_number",
+    "base_sha",
+    "head_sha",
+    "head_branch",
+    "total_commits",
+    "commits_raw",
+    "review_threads_raw",
+    "submitted_reviews_raw",
+    "created_at",
+    "merged_at",
+)
+
+
+def _jsonable(v: Any) -> Any:
+    if isinstance(v, dt.datetime):
+        return _iso(v)
+    if isinstance(v, list):
+        return [_jsonable(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): _jsonable(val) for k, val in v.items()}
+    return v
+
+
+def _row_to_payload(row: tuple[Any, ...]) -> dict[str, Any]:
+    return {key: _jsonable(value) for key, value in zip(_ROW_KEYS, row)}
+
+
+def _payload_to_row(payload: dict[str, Any]) -> tuple[Any, ...]:
+    return tuple(payload.get(key) for key in _ROW_KEYS)
 
 
 def _load_db() -> pg8000.native.Connection:
@@ -225,6 +265,64 @@ def _j(v: Any) -> Any:
     return []
 
 
+def _parent_count_value(v: Any) -> int | None:
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return int(v)
+    if isinstance(v, str):
+        s = v.strip()
+        if s.isdigit():
+            return int(s)
+        return None
+    if isinstance(v, list):
+        return len(v)
+    if isinstance(v, dict):
+        for key in ("totalCount", "total_count", "count", "size"):
+            count = _parent_count_value(v.get(key))
+            if count is not None:
+                return count
+        for key in ("nodes", "edges", "items", "values"):
+            items = v.get(key)
+            if isinstance(items, list):
+                return len(items)
+    return None
+
+
+def _is_merge_headline(headline: str) -> bool:
+    return bool(MERGE_HEADLINE_RE.match((headline or "").strip()))
+
+
+def _commit_merge_metadata(node: dict[str, Any], raw_commit: dict[str, Any]) -> tuple[bool, int | None, str]:
+    for key in (
+        "parentCount",
+        "parent_count",
+        "parentsCount",
+        "parents_count",
+        "numParents",
+        "num_parents",
+    ):
+        for source in (node, raw_commit):
+            count = _parent_count_value(source.get(key))
+            if count is not None:
+                return count > 1, count, f"field:{key}"
+    for key in ("parents", "parent_shas", "parentShaList", "parent_hashes"):
+        for source in (node, raw_commit):
+            count = _parent_count_value(source.get(key))
+            if count is not None:
+                return count > 1, count, f"field:{key}"
+    headline = str(
+        node.get("messageHeadline")
+        or raw_commit.get("message_headline")
+        or node.get("message")
+        or raw_commit.get("message")
+        or ""
+    ).splitlines()[0][:300]
+    return _is_merge_headline(headline), None, "headline_heuristic"
+
+
 def _load_tokens() -> list[str]:
     try:
         cfg = yaml.safe_load(open(TOKENS_YAML))
@@ -271,6 +369,8 @@ def _run_git(repo_dir: str, args: list[str], deadline_monotonic: float | None = 
             ["git", "-c", "safe.directory=*", "-C", repo_dir, *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
@@ -294,6 +394,8 @@ def _git_fetch(
             ["git", "-c", "safe.directory=*", "-C", repo_dir, "fetch", *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
@@ -402,6 +504,7 @@ def _commit_list(commits_raw: Any) -> list[dict[str, Any]]:
         sha = str(node.get("oid") or c.get("hash") or "").strip()
         if not sha:
             continue
+        is_merge_commit, parent_count, detection_mode = _commit_merge_metadata(node, c)
         committed = (
             _parse_ts(node.get("committedDate"))
             or _parse_ts(node.get("committed_date"))
@@ -432,6 +535,9 @@ def _commit_list(commits_raw: Any) -> list[dict[str, Any]]:
                 ).splitlines()[0][:300],
                 "author_name": author.get("name") or c.get("author_name"),
                 "author_github": author_user.get("login") or c.get("author_github"),
+                "is_merge_commit": bool(is_merge_commit),
+                "merge_commit_parent_count": parent_count,
+                "merge_commit_detection_mode": detection_mode,
             }
         )
     out.sort(key=lambda c: ((c["committed_date"] or dt.datetime.min.replace(tzinfo=dt.timezone.utc)), c["commit_idx_hint"]))
@@ -440,19 +546,34 @@ def _commit_list(commits_raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _sample_commits(commits: list[dict[str, Any]], max_snapshots: int) -> list[dict[str, Any]]:
-    if max_snapshots <= 0 or len(commits) <= max_snapshots:
-        return commits
+def _sample_positions(length: int, max_snapshots: int) -> list[int]:
+    if length <= 0:
+        return []
+    if max_snapshots <= 0 or length <= max_snapshots:
+        return list(range(length))
     if max_snapshots == 1:
-        return [commits[-1]]
+        return [length - 1]
     positions: list[int] = []
     for i in range(max_snapshots):
-        pos = round(i * (len(commits) - 1) / (max_snapshots - 1))
+        pos = round(i * (length - 1) / (max_snapshots - 1))
         if not positions or pos != positions[-1]:
             positions.append(pos)
-    if positions[-1] != len(commits) - 1:
-        positions[-1] = len(commits) - 1
-    return [commits[pos] for pos in positions]
+    if positions[-1] != length - 1:
+        positions[-1] = length - 1
+    return positions
+
+
+def _sample_commits(commits: list[dict[str, Any]], max_snapshots: int) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    merge_commit_count = sum(1 for commit in commits if commit.get("is_merge_commit"))
+    non_merge_commits = [commit for commit in commits if not commit.get("is_merge_commit")]
+    sampled_pool = non_merge_commits if non_merge_commits else commits
+    sampled_commits = [sampled_pool[pos] for pos in _sample_positions(len(sampled_pool), max_snapshots)]
+    return sampled_commits, {
+        "merge_commit_count": int(merge_commit_count),
+        "non_merge_commit_count": int(len(non_merge_commits)),
+        "sample_source_count": int(len(sampled_pool)),
+        "merge_commits_skipped_from_sampling": int(merge_commit_count if non_merge_commits else 0),
+    }
 
 
 def _review_events(review_threads_raw: Any, submitted_reviews_raw: Any) -> list[dict[str, Any]]:
@@ -601,6 +722,7 @@ def _extract_snapshot_rows(
     if not source_repo_dir or not os.path.isdir(source_repo_dir):
         return [], {"repo": repo, "instance_id": instance_id, "status": "missing_repo_dir"}
     deadline_monotonic = time.monotonic() + max(1, PR_TIMEOUT_SEC)
+    cached_repo_dir: str | None = None
     try:
         cached_repo_dir = repo_cache.ensure_local_repo(
             source_repo_dir,
@@ -625,7 +747,7 @@ def _extract_snapshot_rows(
     commits = _commit_list(commits_raw)
     if len(commits) < 2:
         return [], {"repo": repo, "instance_id": instance_id, "status": "insufficient_commits"}
-    sampled_commits = _sample_commits(commits, max_snapshots)
+    sampled_commits, sampling_meta = _sample_commits(commits, max_snapshots)
     wanted_shas = [str(c["hash"]) for c in commits if c.get("hash")]
     overlay_mount: OverlayMount | None = None
     repo_dir = cached_repo_dir
@@ -773,6 +895,16 @@ def _extract_snapshot_rows(
                     "total_commits": int(total_commits or len(commits)),
                     "sampled_commit_count": int(len(sampled_commits)),
                     "sampled_commit_rank": int(sample_idx),
+                    "is_merge_commit_sampled": int(bool(commit.get("is_merge_commit"))),
+                    "merge_commit_parent_count": (
+                        int(commit["merge_commit_parent_count"])
+                        if commit.get("merge_commit_parent_count") is not None
+                        else None
+                    ),
+                    "merge_commit_detection_mode": str(commit.get("merge_commit_detection_mode") or ""),
+                    "merge_commits_total": int(sampling_meta["merge_commit_count"]),
+                    "non_merge_commits_total": int(sampling_meta["non_merge_commit_count"]),
+                    "merge_commits_skipped_from_sampling": int(sampling_meta["merge_commits_skipped_from_sampling"]),
                     "history_recovery_mode": recovery_mode,
                     "commit_sha": commit_sha,
                     "commit_idx": int(commit["commit_idx"]),
@@ -805,6 +937,129 @@ def _extract_snapshot_rows(
     finally:
         if overlay_mount is not None:
             unmount_overlay(overlay_mount)
+        repo_cache.release_local_repo(cached_repo_dir)
+
+
+def _worker_extract_to_file(input_path: str, output_path: str) -> int:
+    try:
+        with open(input_path) as f:
+            payload = json.load(f)
+    except Exception as e:
+        with open(output_path, "w") as f:
+            json.dump(
+                {
+                    "snapshot_rows": [],
+                    "error": {"status": "worker_input_failed", "error": str(e)[:400]},
+                    "blame_cache": blame_cache_stats(),
+                },
+                f,
+            )
+        return 1
+    row_payload = payload.get("row")
+    if not isinstance(row_payload, dict):
+        with open(output_path, "w") as f:
+            json.dump(
+                {
+                    "snapshot_rows": [],
+                    "error": {"status": "worker_input_invalid"},
+                    "blame_cache": blame_cache_stats(),
+                },
+                f,
+            )
+        return 1
+    row = _payload_to_row(row_payload)
+    repo_dirs = _repo_dir_map()
+    gh_tokens = _load_tokens()
+    try:
+        repo_cache = RepoRamdiskCache()
+    except Exception as e:
+        with open(output_path, "w") as f:
+            json.dump(
+                {
+                    "snapshot_rows": [],
+                    "error": {
+                        "repo": str(row_payload.get("repo") or ""),
+                        "instance_id": str(row_payload.get("instance_id") or ""),
+                        "status": "worker_init_failed",
+                        "error": str(e)[:400],
+                    },
+                    "blame_cache": blame_cache_stats(),
+                },
+                f,
+            )
+        return 1
+    try:
+        snapshot_rows, err = _extract_snapshot_rows(
+            row,
+            repo_dirs,
+            gh_tokens,
+            int(payload.get("max_snapshots") or 5),
+            repo_cache,
+        )
+        result = {
+            "snapshot_rows": snapshot_rows,
+            "error": err,
+            "blame_cache": blame_cache_stats(),
+        }
+    except Exception as e:
+        result = {
+            "snapshot_rows": [],
+            "error": {
+                "repo": str(row_payload.get("repo") or ""),
+                "instance_id": str(row_payload.get("instance_id") or ""),
+                "status": "worker_exception",
+                "error": str(e)[:400],
+            },
+            "blame_cache": blame_cache_stats(),
+        }
+    try:
+        with open(output_path, "w") as f:
+            json.dump(result, f)
+    finally:
+        repo_cache.cleanup()
+    return 0
+
+
+def _tail_text(path: str, limit: int = 1200) -> str:
+    try:
+        text = open(path, "r", errors="replace").read()
+    except Exception:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[-limit:]
+
+
+def _kill_proc_group(proc: subprocess.Popen[Any], sig: int) -> None:
+    try:
+        os.killpg(proc.pid, sig)
+    except Exception:
+        try:
+            proc.send_signal(sig)
+        except Exception:
+            pass
+
+
+def _merge_cache_stats(acc: Counter[str], stats: dict[str, Any] | None) -> None:
+    if not isinstance(stats, dict):
+        return
+    for key in ("hits", "misses", "waits", "stores", "evictions", "disabled"):
+        acc[key] += int(stats.get(key, 0) or 0)
+    acc["workers_reported"] += 1
+    acc["max_entries"] = max(acc.get("max_entries", 0), int(stats.get("max_entries", 0) or 0))
+
+
+def _cache_progress_payload(acc: Counter[str]) -> dict[str, int]:
+    return {
+        "hits": int(acc.get("hits", 0)),
+        "misses": int(acc.get("misses", 0)),
+        "waits": int(acc.get("waits", 0)),
+        "stores": int(acc.get("stores", 0)),
+        "evictions": int(acc.get("evictions", 0)),
+        "disabled": int(acc.get("disabled", 0)),
+        "workers_reported": int(acc.get("workers_reported", 0)),
+        "max_entries": int(acc.get("max_entries", 0)),
+    }
 
 
 def _metric_summary(deltas: list[float], better: str) -> dict[str, float]:
@@ -1027,7 +1282,14 @@ def main() -> None:
     ap.add_argument("--instance-id", default=None)
     ap.add_argument("--instance-ids-file", default=None)
     ap.add_argument("--require-review-events", action="store_true")
+    ap.add_argument("--worker-input", default=None)
+    ap.add_argument("--worker-output", default=None)
     args = ap.parse_args()
+
+    if args.worker_input or args.worker_output:
+        if not args.worker_input or not args.worker_output:
+            raise SystemExit("--worker-input and --worker-output must be provided together")
+        raise SystemExit(_worker_extract_to_file(args.worker_input, args.worker_output))
 
     conn = _load_db()
     _ensure_checkpoint_table(conn)
@@ -1079,7 +1341,7 @@ def main() -> None:
             created_at, merged_at
         FROM latest
         WHERE jsonb_array_length(commits::jsonb) >= :min_commits
-          AND changed_files BETWEEN :min_files AND :max_files
+          AND COALESCE(changed_files, 0) BETWEEN :min_files AND :max_files
           AND (COALESCE(additions, 0) + COALESCE(deletions, 0)) BETWEEN :min_lines AND :max_lines
         ORDER BY {order_sql}
         LIMIT :source_lim
@@ -1100,9 +1362,6 @@ def main() -> None:
     if checkpoint_by_id:
         print(f"Resuming {len(checkpoint_by_id)} completed PRs from postgres checkpoints", flush=True)
 
-    repo_dirs = _repo_dir_map()
-    gh_tokens = _load_tokens()
-    repo_cache = RepoRamdiskCache()
     args.progress_log = args.progress_log or _default_progress_log_path(args.out)
     args.partial_summary_out = args.partial_summary_out or _default_partial_summary_path(args.summary_out)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
@@ -1154,59 +1413,220 @@ def main() -> None:
         )
 
     checkpoint_conn: pg8000.native.Connection | None = None
+    worker_tmp_dir = tempfile.mkdtemp(prefix="prref-worker-")
+    active_workers: dict[int, dict[str, Any]] = {}
+    cache_totals: Counter[str] = Counter()
+    completed_new_prs = 0
+
+    def _launch_worker(row: tuple[Any, ...], launch_idx: int) -> dict[str, Any]:
+        row_payload = _row_to_payload(row)
+        instance_id = str(row_payload.get("instance_id") or f"row-{launch_idx}")
+        safe_iid = re.sub(r"[^A-Za-z0-9._-]+", "_", instance_id)[:120]
+        input_path = os.path.join(worker_tmp_dir, f"{launch_idx:06d}_{safe_iid}.input.json")
+        output_path = os.path.join(worker_tmp_dir, f"{launch_idx:06d}_{safe_iid}.output.json")
+        stderr_path = os.path.join(worker_tmp_dir, f"{launch_idx:06d}_{safe_iid}.stderr.log")
+        with open(input_path, "w") as f:
+            json.dump({"row": row_payload, "max_snapshots": int(args.max_snapshots)}, f)
+        stderr_f = open(stderr_path, "w")
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                os.path.abspath(__file__),
+                "--worker-input",
+                input_path,
+                "--worker-output",
+                output_path,
+            ],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_f,
+            start_new_session=True,
+        )
+        return {
+            "proc": proc,
+            "stderr_f": stderr_f,
+            "stderr_path": stderr_path,
+            "input_path": input_path,
+            "output_path": output_path,
+            "row_payload": row_payload,
+            "started_monotonic": time.monotonic(),
+            "terminate_sent_at": None,
+            "timed_out": False,
+            "recorded_timeout": False,
+        }
+
     try:
         checkpoint_conn = _load_db()
         _ensure_checkpoint_table(checkpoint_conn)
-        with open(args.out, "a") as out_f, ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            futs = [pool.submit(_extract_snapshot_rows, row, repo_dirs, gh_tokens, args.max_snapshots, repo_cache) for row in rows]
-            for idx, fut in enumerate(as_completed(futs), start=1):
-                snapshot_rows, err = fut.result()
-                repo = ""
-                instance_id = ""
-                if snapshot_rows:
-                    repo = str(snapshot_rows[0].get("repo") or "")
-                    instance_id = str(snapshot_rows[0].get("instance_id") or "")
-                if err:
-                    repo = repo or str(err.get("repo") or "")
-                    instance_id = instance_id or str(err.get("instance_id") or "")
-                if instance_id:
-                    _upsert_checkpoint(checkpoint_conn, args.run_tag, repo, instance_id, snapshot_rows, err)
-                with _WRITE_LOCK:
-                    if snapshot_rows:
-                        all_rows.extend(snapshot_rows)
-                        counters["ok_prs"] += 1
-                        counters["rows"] += len(snapshot_rows)
-                        for row in snapshot_rows:
-                            out_f.write(json.dumps(row) + "\n")
-                        out_f.flush()
-                    if err:
-                        counters["err_prs"] += 1
-                        errors.append(err)
-                    processed_total = len(checkpoint_by_id) + idx
-                    if processed_total % 25 == 0:
-                        print(
-                            f"  processed={processed_total} / {target_pr_count} ok_prs={counters['ok_prs']} err_prs={counters['err_prs']} rows={counters['rows']}",
-                            flush=True,
-                        )
-                    if processed_total % progress_every == 0 or idx == total_futs:
-                        payload = {
-                            "event": "progress",
-                            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
-                            "run_tag": args.run_tag,
-                            "processed_prs": processed_total,
-                            "total_prs": target_pr_count,
-                            "ok_prs": counters["ok_prs"],
-                            "err_prs": counters["err_prs"],
-                            "rows": counters["rows"],
-                            "progress_fraction": float(processed_total / target_pr_count) if target_pr_count > 0 else 0.0,
-                            "last_error_status": (errors[-1].get("status") if errors else None),
+        with open(args.out, "a") as out_f:
+            next_row_idx = 0
+            max_workers = max(1, int(args.workers))
+
+            while next_row_idx < pending_prs or active_workers:
+                while next_row_idx < pending_prs and len(active_workers) < max_workers:
+                    worker = _launch_worker(rows[next_row_idx], next_row_idx)
+                    active_workers[worker["proc"].pid] = worker
+                    next_row_idx += 1
+
+                now = time.monotonic()
+                finished_pids: list[int] = []
+                made_progress = False
+                for pid, worker in list(active_workers.items()):
+                    proc: subprocess.Popen[Any] = worker["proc"]
+                    rc = proc.poll()
+                    runtime = now - float(worker["started_monotonic"])
+                    if rc is None and runtime > PR_TIMEOUT_SEC:
+                        if worker["terminate_sent_at"] is None:
+                            _kill_proc_group(proc, signal.SIGTERM)
+                            worker["terminate_sent_at"] = now
+                            worker["timed_out"] = True
+                        elif now - float(worker["terminate_sent_at"]) >= WORKER_WATCHDOG_GRACE_SEC:
+                            _kill_proc_group(proc, signal.SIGKILL)
+                            row_payload = worker["row_payload"]
+                            err = {
+                                "repo": str(row_payload.get("repo") or ""),
+                                "instance_id": str(row_payload.get("instance_id") or ""),
+                                "status": "worker_watchdog_timeout",
+                                "timeout_sec": PR_TIMEOUT_SEC,
+                                "watchdog_grace_sec": WORKER_WATCHDOG_GRACE_SEC,
+                                "stderr": _tail_text(worker["stderr_path"]),
+                            }
+                            instance_id = str(row_payload.get("instance_id") or "")
+                            repo = str(row_payload.get("repo") or "")
+                            if instance_id:
+                                _upsert_checkpoint(checkpoint_conn, args.run_tag, repo, instance_id, [], err)
+                            counters["err_prs"] += 1
+                            errors.append(err)
+                            completed_new_prs += 1
+                            worker["stderr_f"].close()
+                            active_workers.pop(pid, None)
+                            for path in (worker["input_path"], worker["output_path"], worker["stderr_path"]):
+                                try:
+                                    os.remove(path)
+                                except FileNotFoundError:
+                                    pass
+                            processed_total = len(checkpoint_by_id) + completed_new_prs
+                            if processed_total % 25 == 0:
+                                print(
+                                    f"  processed={processed_total} / {target_pr_count} ok_prs={counters['ok_prs']} err_prs={counters['err_prs']} rows={counters['rows']}",
+                                    flush=True,
+                                )
+                            if processed_total % progress_every == 0 or completed_new_prs == total_futs:
+                                payload = {
+                                    "event": "progress",
+                                    "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+                                    "run_tag": args.run_tag,
+                                    "processed_prs": processed_total,
+                                    "total_prs": target_pr_count,
+                                    "ok_prs": counters["ok_prs"],
+                                    "err_prs": counters["err_prs"],
+                                    "rows": counters["rows"],
+                                    "progress_fraction": float(processed_total / target_pr_count) if target_pr_count > 0 else 0.0,
+                                    "last_error_status": (errors[-1].get("status") if errors else None),
+                                    "blame_cache": _cache_progress_payload(cache_totals),
+                                }
+                                _append_progress_log(args.progress_log, payload)
+                                _write_partial_summary(args.partial_summary_out, all_rows, counters, errors, processed_total, target_pr_count)
+                            made_progress = True
+                            continue
+                    if rc is not None:
+                        finished_pids.append(pid)
+
+                for pid in finished_pids:
+                    worker = active_workers.pop(pid)
+                    proc: subprocess.Popen[Any] = worker["proc"]
+                    worker["stderr_f"].close()
+                    result: dict[str, Any] = {}
+                    if os.path.exists(worker["output_path"]):
+                        try:
+                            with open(worker["output_path"]) as f:
+                                result = json.load(f)
+                        except Exception as e:
+                            result = {
+                                "snapshot_rows": [],
+                                "error": {"status": "worker_output_invalid", "error": str(e)[:400]},
+                            }
+                    snapshot_rows = result.get("snapshot_rows")
+                    if not isinstance(snapshot_rows, list):
+                        snapshot_rows = []
+                    err = result.get("error")
+                    if err is not None and not isinstance(err, dict):
+                        err = {"status": str(err)}
+                    if proc.returncode not in (0, None) and not snapshot_rows and not err:
+                        row_payload = worker["row_payload"]
+                        err = {
+                            "repo": str(row_payload.get("repo") or ""),
+                            "instance_id": str(row_payload.get("instance_id") or ""),
+                            "status": "worker_exit_nonzero",
+                            "exit_code": int(proc.returncode),
+                            "stderr": _tail_text(worker["stderr_path"]),
                         }
-                        _append_progress_log(args.progress_log, payload)
-                        _write_partial_summary(args.partial_summary_out, all_rows, counters, errors, processed_total, target_pr_count)
+                    _merge_cache_stats(cache_totals, result.get("blame_cache"))
+                    repo = ""
+                    instance_id = ""
+                    if snapshot_rows:
+                        repo = str(snapshot_rows[0].get("repo") or "")
+                        instance_id = str(snapshot_rows[0].get("instance_id") or "")
+                    if err:
+                        repo = repo or str(err.get("repo") or "")
+                        instance_id = instance_id or str(err.get("instance_id") or "")
+                    if instance_id:
+                        _upsert_checkpoint(checkpoint_conn, args.run_tag, repo, instance_id, snapshot_rows, err)
+                    with _WRITE_LOCK:
+                        if snapshot_rows:
+                            all_rows.extend(snapshot_rows)
+                            counters["ok_prs"] += 1
+                            counters["rows"] += len(snapshot_rows)
+                            for row_out in snapshot_rows:
+                                out_f.write(json.dumps(row_out) + "\n")
+                            out_f.flush()
+                        if err:
+                            counters["err_prs"] += 1
+                            errors.append(err)
+                        completed_new_prs += 1
+                        processed_total = len(checkpoint_by_id) + completed_new_prs
+                        if processed_total % 25 == 0:
+                            print(
+                                f"  processed={processed_total} / {target_pr_count} ok_prs={counters['ok_prs']} err_prs={counters['err_prs']} rows={counters['rows']}",
+                                flush=True,
+                            )
+                        if processed_total % progress_every == 0 or completed_new_prs == total_futs:
+                            payload = {
+                                "event": "progress",
+                                "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+                                "run_tag": args.run_tag,
+                                "processed_prs": processed_total,
+                                "total_prs": target_pr_count,
+                                "ok_prs": counters["ok_prs"],
+                                "err_prs": counters["err_prs"],
+                                "rows": counters["rows"],
+                                "progress_fraction": float(processed_total / target_pr_count) if target_pr_count > 0 else 0.0,
+                                "last_error_status": (errors[-1].get("status") if errors else None),
+                                "blame_cache": _cache_progress_payload(cache_totals),
+                            }
+                            _append_progress_log(args.progress_log, payload)
+                            _write_partial_summary(args.partial_summary_out, all_rows, counters, errors, processed_total, target_pr_count)
+                    for path in (worker["input_path"], worker["output_path"], worker["stderr_path"]):
+                        try:
+                            os.remove(path)
+                        except FileNotFoundError:
+                            pass
+                    made_progress = True
+
+                if not made_progress:
+                    time.sleep(0.2)
     finally:
         if checkpoint_conn is not None:
             checkpoint_conn.close()
-        repo_cache.cleanup()
+        for worker in list(active_workers.values()):
+            proc = worker["proc"]
+            if proc.poll() is None:
+                _kill_proc_group(proc, signal.SIGKILL)
+            try:
+                worker["stderr_f"].close()
+            except Exception:
+                pass
+        shutil.rmtree(worker_tmp_dir, ignore_errors=True)
 
     all_rows.sort(key=lambda r: (r["repo"], r["instance_id"], r["commit_idx"]))
     with open(args.out, "w") as f:
