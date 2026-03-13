@@ -588,8 +588,14 @@ flowchart TB
     classDef fail fill:#fbe4e6,stroke:#c00000,color:#111;
     classDef ideal fill:#e2efda,stroke:#538135,color:#111;
 
+    F1 --> D2
+    F2 --> D3
+    F3 --> D4
+
     class D1,M1,P1,R1,Q1,F1,D2,M2,P2,R2,F2,D3,M3,F3 fail;
     class D4,M4,S4 ideal;
+
+    linkStyle 16,17,18 stroke:transparent,fill:none;
 ```
 
 **Why this is the right first RL target**:

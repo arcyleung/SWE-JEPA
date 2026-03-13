@@ -2,7 +2,7 @@
 
 **Latent-space predictive architecture for code understanding, inspired by SALT and V-JEPA.**
 
-Full research proposal: [`docs/code-jepa-research-proposal.md`](docs/code-jepa-research-proposal.md)
+Full research proposal: [`docs/swe-jepa-research-proposal.md`](docs/swe-jepa-research-proposal.md)
 
 ---
 
