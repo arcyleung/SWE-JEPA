@@ -550,6 +550,48 @@ terminal reward first, process reward second.
 PR states, then use it to guide a large frozen coder at inference time. The training target is
 not "next token"; it is "which attempt is more likely to be merged with less friction?"
 
+**Failure-loop picture**: Without steering, software-engineering mistakes are often discovered
+only after the patch has already cleared some cheaper filter: self-review, external review, or
+even CI/QA. The ideal 5.1 outcome is to collapse those loops earlier by making the coding model
+look "clairvoyant" about downstream software-engineering failure modes.
+
+```mermaid
+flowchart TB
+    subgraph L1["Failure Loop 1: Passed PR/CI, failed later in production"]
+        D1["Developer"] --> M1["Coding model<br/>(non-steered)"]
+        M1 --> P1["Commit & push"]
+        P1 --> R1["PR reviewer / CI"]
+        R1 --> Q1["QA / correctness passed"]
+        Q1 --> F1["Production failure<br/>(memory leak, hidden bug, etc.)"]
+        F1 --> D1
+    end
+
+    subgraph L2["Failure Loop 2: Failed external senior review"]
+        D2["Developer"] --> M2["Coding model<br/>(non-steered)"]
+        M2 --> P2["Commit & push"]
+        P2 --> R2["PR reviewer / CI"]
+        R2 --> F2["Senior review failure"]
+        F2 --> D2
+    end
+
+    subgraph L3["Failure Loop 3: Failed developer self-review"]
+        D3["Developer"] --> M3["Coding model<br/>(non-steered)"]
+        M3 --> F3["Developer self-review failure"]
+        F3 --> D3
+    end
+
+    subgraph L4["Ideal Path: steered coder avoids downstream loops"]
+        D4["Developer"] --> M4["Coding model<br/>(steered)"]
+        M4 --> S4["Successful feature<br/>(architecturally + organizationally informed;<br/>more &quot;clairvoyant&quot; about SWE failure modes)"]
+    end
+
+    classDef fail fill:#fbe4e6,stroke:#c00000,color:#111;
+    classDef ideal fill:#e2efda,stroke:#538135,color:#111;
+
+    class D1,M1,P1,R1,Q1,F1,D2,M2,P2,R2,F2,D3,M3,F3 fail;
+    class D4,M4,S4 ideal;
+```
+
 **Why this is the right first RL target**:
 - The action space is small and cheap: retry vs submit, attempt reranking, scope tightening,
   test emphasis, interface-audit hints, and split-patch suggestions.
