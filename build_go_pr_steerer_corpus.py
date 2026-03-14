@@ -32,6 +32,7 @@ REFACTOR_SQL_REGEX = (
 )
 
 _REPO_DIRS: dict[str, str] = {}
+_LLM_LABEL_MAP: dict[tuple[str, int], dict] = {}
 
 
 def _load_db() -> pg8000.native.Connection:
@@ -194,7 +195,13 @@ def _worker(
         return None, None, stats
 
     fp_raw = _go_file_list(file_patches, non_test_patch_files, test_patch_files, patch_text)
-    refactor_requested = int(bool(refactor_requested))
+    # Override with LLM labels if available
+    llm_key = (str(repo), int(pull_number))
+    if _LLM_LABEL_MAP:
+        llm_row = _LLM_LABEL_MAP.get(llm_key)
+        refactor_requested = int(bool(llm_row["refactor_requested"])) if llm_row else 0
+    else:
+        refactor_requested = int(bool(refactor_requested))
 
     try:
         feats = extract_features(
@@ -246,9 +253,24 @@ def _worker(
     return feature_row, label_row, stats
 
 
-def _init_worker(repo_dirs: dict[str, str]) -> None:
-    global _REPO_DIRS
+def _init_worker(repo_dirs: dict[str, str], llm_label_map: dict[tuple[str, int], dict] | None = None) -> None:
+    global _REPO_DIRS, _LLM_LABEL_MAP
     _REPO_DIRS = repo_dirs
+    if llm_label_map is not None:
+        _LLM_LABEL_MAP = llm_label_map
+
+
+def _load_llm_labels(path: str) -> dict[tuple[str, int], dict]:
+    """Load pre-computed LLM refactor labels from label_refactor_llm.py output."""
+    labels: dict[tuple[str, int], dict] = {}
+    with open(path) as f:
+        for ln in f:
+            if not ln.strip():
+                continue
+            row = json.loads(ln)
+            key = (str(row["repo"]), int(row["pull_number"]))
+            labels[key] = row
+    return labels
 
 
 def main() -> None:
@@ -262,6 +284,8 @@ def main() -> None:
     ap.add_argument("--limit-closed", type=int, default=0)
     ap.add_argument("--shard-modulus", type=int, default=0)
     ap.add_argument("--shard-remainder", type=int, default=0)
+    ap.add_argument("--llm-labels", default=None,
+                    help="Path to LLM-judged refactor labels JSONL. When provided, replaces SQL regex labeling.")
     args = ap.parse_args()
 
     conn = _load_db()
@@ -274,6 +298,12 @@ def main() -> None:
     rows: list[tuple[str, tuple[Any, ...]]] = [("go_prs", r) for r in merged_rows] + [("go_prs_closed", r) for r in closed_rows]
     repo_dirs = _repo_dir_map()
     print(f"repo_dir map size: {len(repo_dirs)}", flush=True)
+
+    llm_label_map: dict[tuple[str, int], dict] | None = None
+    if args.llm_labels:
+        llm_label_map = _load_llm_labels(args.llm_labels)
+        print(f"Loaded {len(llm_label_map)} LLM refactor labels from {args.llm_labels}", flush=True)
+
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     os.makedirs(os.path.dirname(args.labels_out), exist_ok=True)
 
@@ -282,7 +312,7 @@ def main() -> None:
         with ProcessPoolExecutor(
             max_workers=max(1, args.workers),
             initializer=_init_worker,
-            initargs=(repo_dirs,),
+            initargs=(repo_dirs, llm_label_map),
         ) as pool:
             processed = 0
             batch_size = max(1, int(args.submit_batch_size))

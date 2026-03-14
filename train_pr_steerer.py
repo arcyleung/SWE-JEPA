@@ -194,7 +194,10 @@ def _fit_one(X, y, seed=42):
         return sc, _ConstantClf(), pred
     clf = LogisticRegression(C=1.0, max_iter=1000, class_weight="balanced", solver="lbfgs", random_state=seed)
     clf.fit(Xs, y)
-    pred = clf.predict_proba(Xs)[:, 1]
+    if len(np.unique(y)) > 2:
+        pred = clf.predict_proba(Xs)  # full (n_samples, n_classes) for multi-class
+    else:
+        pred = clf.predict_proba(Xs)[:, 1]
     return sc, clf, pred
 
 
@@ -202,6 +205,7 @@ def _cv_scores(X, y, groups, cv_folds, seed):
     out = []
     if cv_folds < 2 or len(np.unique(groups)) < cv_folds:
         return out
+    is_multiclass = len(np.unique(y)) > 2
     gkf = GroupKFold(n_splits=cv_folds)
     idx = np.arange(len(X))
     for tr, te in gkf.split(idx, groups=groups):
@@ -213,14 +217,52 @@ def _cv_scores(X, y, groups, cv_folds, seed):
         Xte = sc.transform(X[te])
         clf = LogisticRegression(C=1.0, max_iter=1000, class_weight="balanced", solver="lbfgs", random_state=seed)
         clf.fit(Xtr, y[tr])
-        pred = clf.predict_proba(Xte)[:, 1]
-        out.append(
-            {
-                "auroc": float(roc_auc_score(y[te], pred)) if len(set(y[te])) > 1 else 0.5,
-                "pr_auc": float(average_precision_score(y[te], pred)),
-            }
-        )
+        n_classes_te = len(set(y[te]))
+        if is_multiclass:
+            pred_proba = clf.predict_proba(Xte)
+            if n_classes_te > 1:
+                auroc = float(roc_auc_score(y[te], pred_proba, multi_class="ovr", average="weighted"))
+            else:
+                auroc = 0.5
+            # For multi-class, use macro-averaged binarized PR-AUC
+            from sklearn.preprocessing import label_binarize
+            classes = clf.classes_
+            y_bin = label_binarize(y[te], classes=classes)
+            pr_auc = float(average_precision_score(y_bin, pred_proba, average="weighted"))
+            out.append({"auroc": auroc, "pr_auc": pr_auc})
+        else:
+            pred = clf.predict_proba(Xte)[:, 1]
+            out.append(
+                {
+                    "auroc": float(roc_auc_score(y[te], pred)) if n_classes_te > 1 else 0.5,
+                    "pr_auc": float(average_precision_score(y[te], pred)),
+                }
+            )
     return out
+
+
+def _compute_train_metrics(y_acc, pred_acc, y_ref, pred_ref):
+    """Compute train metrics handling both binary and multi-class refactor targets."""
+    metrics = {
+        "acceptance_auroc": float(roc_auc_score(y_acc, pred_acc)) if len(set(y_acc)) > 1 else 0.5,
+        "acceptance_pr_auc": float(average_precision_score(y_acc, pred_acc)),
+    }
+    if len(np.unique(y_ref)) > 2:
+        # Multi-class (ordinal scope)
+        from sklearn.preprocessing import label_binarize
+        # pred_ref is predict_proba output (n_samples, n_classes)
+        if pred_ref.ndim == 1:
+            metrics["refactor_auroc"] = 0.5
+            metrics["refactor_pr_auc"] = 0.0
+        else:
+            classes = np.unique(y_ref)
+            y_bin = label_binarize(y_ref, classes=classes)
+            metrics["refactor_auroc"] = float(roc_auc_score(y_bin, pred_ref, multi_class="ovr", average="weighted")) if len(set(y_ref)) > 1 else 0.5
+            metrics["refactor_pr_auc"] = float(average_precision_score(y_bin, pred_ref, average="weighted"))
+    else:
+        metrics["refactor_auroc"] = float(roc_auc_score(y_ref, pred_ref)) if len(set(y_ref)) > 1 else 0.5
+        metrics["refactor_pr_auc"] = float(average_precision_score(y_ref, pred_ref))
+    return metrics
 
 
 def main():
@@ -247,11 +289,45 @@ def main():
         action="store_true",
         help="Read refactor labels from followups_file table in Postgres instead of --labels-data file.",
     )
+    ap.add_argument(
+        "--llm-refactor-labels",
+        default=None,
+        help="Path to LLM-judged refactor labels JSONL from label_refactor_llm.py. Overrides --labels-data for refactor head.",
+    )
+    ap.add_argument(
+        "--refactor-scope-target",
+        action="store_true",
+        help="Train refactor head on ordinal scope (none=0, function=1, module=2, library_component=3) instead of binary refactor_requested.",
+    )
     args = ap.parse_args()
 
     refactor_target = "refactor_requested" if args.refactor_target == "auto" else args.refactor_target
 
-    if args.followup_labels:
+    if args.llm_refactor_labels:
+        # LLM-judged labels override --labels-data
+        if args.refactor_scope_target:
+            # Convert scope to ordinal labels
+            _scope_ord = {"none": 0, "function": 1, "module": 2, "library_component": 3}
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+            with open(args.llm_refactor_labels) as _lf:
+                for ln in _lf:
+                    if not ln.strip():
+                        continue
+                    row = json.loads(ln)
+                    scope_val = _scope_ord.get(row.get("refactor_scope", "none"), 0)
+                    tmp.write(json.dumps({
+                        "repo": row["repo"],
+                        "pull_number": row["pull_number"],
+                        "s_t1": {"refactor_requested": scope_val},
+                    }) + "\n")
+            tmp.close()
+            args.labels_data = tmp.name
+        else:
+            # LLM labels already have s_t1.refactor_requested — use directly
+            args.labels_data = args.llm_refactor_labels
+        refactor_target = "refactor_requested"
+    elif args.followup_labels:
         # Override the labels_path with DB-sourced followup labels
         _followup_map, _followup_source = _load_followup_labels_from_db()
         # Write a temporary JSONL so _load_refactor_labels can consume it
@@ -265,7 +341,11 @@ def main():
 
     rows, X, y_acc, y_ref, groups, meta = _load(args.data, args.labels_data, refactor_target, language=args.language)
 
-    if args.followup_labels:
+    if args.llm_refactor_labels:
+        meta["refactor_label_source"] = "llm_refactor_scope" if args.refactor_scope_target else "llm_refactor_requested"
+        if args.refactor_scope_target:
+            os.unlink(args.labels_data)  # clean up temp file
+    elif args.followup_labels:
         meta["refactor_label_source"] = "has_followup"
         os.unlink(args.labels_data)  # clean up temp file
 
@@ -292,8 +372,8 @@ def main():
         "refactor": {
             "scaler_mean": sc_ref.mean_.tolist(),
             "scaler_scale": sc_ref.scale_.tolist(),
-            "coef": clf_ref.coef_[0].tolist(),
-            "intercept": float(clf_ref.intercept_[0]),
+            "coef": clf_ref.coef_.tolist(),  # (1, n_features) for binary, (n_classes, n_features) for multi-class
+            "intercept": clf_ref.intercept_.tolist(),
         },
     }
     os.makedirs(os.path.dirname(args.model_out), exist_ok=True)
@@ -310,12 +390,7 @@ def main():
         "matched_refactor_labels": meta["matched_refactor_labels"],
         "acceptance_rate": float(np.mean(y_acc)),
         "refactor_rate": float(np.mean(y_ref)),
-        "train_metrics": {
-            "acceptance_auroc": float(roc_auc_score(y_acc, pred_acc)) if len(set(y_acc)) > 1 else 0.5,
-            "acceptance_pr_auc": float(average_precision_score(y_acc, pred_acc)),
-            "refactor_auroc": float(roc_auc_score(y_ref, pred_ref)) if len(set(y_ref)) > 1 else 0.5,
-            "refactor_pr_auc": float(average_precision_score(y_ref, pred_ref)),
-        },
+        "train_metrics": _compute_train_metrics(y_acc, pred_acc, y_ref, pred_ref),
         "cv": cv,
         "model_out": args.model_out,
     }

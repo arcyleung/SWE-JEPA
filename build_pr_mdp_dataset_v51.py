@@ -132,16 +132,36 @@ def _load_followup_risk_cache(path: str) -> dict[str, float]:
         return {}
 
 
+def _load_llm_labels(path: str) -> dict[tuple[str, int], dict]:
+    """Load pre-computed LLM refactor labels from label_refactor_llm.py output."""
+    labels: dict[tuple[str, int], dict] = {}
+    with open(path) as f:
+        for ln in f:
+            if not ln.strip():
+                continue
+            row = json.loads(ln)
+            key = (str(row["repo"]), int(row["pull_number"]))
+            labels[key] = row
+    return labels
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=30000)
     ap.add_argument("--out", default=OUT_JSONL)
     ap.add_argument("--summary-out", default=OUT_SUMMARY)
     ap.add_argument("--followup-risk-cache", default=FOLLOWUP_RISK_CACHE)
+    ap.add_argument("--llm-labels", default=None,
+                    help="Path to LLM-judged refactor labels JSONL. When provided, replaces regex labeling.")
     args = ap.parse_args()
 
     risk_cache = _load_followup_risk_cache(args.followup_risk_cache)
     print(f"Loaded followup_risk cache: {len(risk_cache)} instance_ids")
+
+    llm_label_map: dict[tuple[str, int], dict] = {}
+    if args.llm_labels:
+        llm_label_map = _load_llm_labels(args.llm_labels)
+        print(f"Loaded {len(llm_label_map)} LLM refactor labels from {args.llm_labels}")
 
     conn = _load_db()
     rows = conn.run(
@@ -178,8 +198,15 @@ def main():
                 file_patches,
             ) = r
 
-            ref_comment_count, ref_thread_count = _count_refactor_mentions(review_threads, comments)
-            refactor_requested = int(ref_comment_count > 0 or ref_thread_count > 0)
+            llm_key = (str(repo), int(pr_num or 0))
+            if llm_label_map and llm_key in llm_label_map:
+                llm_row = llm_label_map[llm_key]
+                refactor_requested = int(bool(llm_row.get("refactor_requested", False)))
+                ref_comment_count = int(llm_row.get("refactor_thread_count", 0))
+                ref_thread_count = ref_comment_count
+            else:
+                ref_comment_count, ref_thread_count = _count_refactor_mentions(review_threads, comments)
+                refactor_requested = int(ref_comment_count > 0 or ref_thread_count > 0)
             reviewer_n = _requested_reviewer_count(requested_reviewers)
             churn = int((additions or 0) + (deletions or 0))
             review_friction = int(

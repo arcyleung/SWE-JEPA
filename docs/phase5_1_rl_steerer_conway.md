@@ -307,12 +307,163 @@ reward is not yet implemented (see "Next steps" below).
 
 ---
 
+## Experiment 5.1.2 — LLM-Judged Refactor Labels & Org-Specific Preferences
+
+### Motivation
+
+The regex-based refactor labels (`REFACTOR_RE`, `REFACTOR_SQL_REGEX`) miss semantically
+diverse refactor requests ("use X instead", "this should be a separate function") and
+produce false positives on comments that mention refactoring without requesting it.
+
+We replaced regex labeling with LLM-judge labeling (`label_refactor_llm.py`) using
+`qwen3.5_35b_a3b` across 5 replicas (2000 concurrency), classifying each review thread
+for `refactor_requested` (bool) and `refactor_scope` (function / module / library_component).
+
+### LLM Labeling Results (prs_copy)
+
+| Metric | Value |
+|--------|-------|
+| PRs labeled | 41,376 |
+| Refactor rate | 45.6% |
+| Scope: function | 13,549 |
+| Scope: module | 3,680 |
+| Scope: library_component | 1,625 |
+| Error threads | 17 / 145,224 (0.01%) |
+| Throughput | ~62 PRs/s (~11 min total) |
+
+### Retrained Steerer Metrics
+
+**Binary refactor_requested (LLM labels)**
+
+| Metric | Train | CV Mean |
+|--------|-------|---------|
+| AUROC | 0.670 | 0.663 |
+| PR-AUC | 0.304 | 0.298 |
+
+**Ordinal scope (none=0, function=1, module=2, library_component=3)**
+
+| Metric | Train | CV Mean |
+|--------|-------|---------|
+| AUROC (weighted OVR) | 0.649 | 0.642 |
+| PR-AUC (weighted) | 0.764 | 0.762 |
+
+### Correlation with Conway Features
+
+Most Conway features show weak univariate correlation with refactor labels, but the
+multivariate model reveals conditional structure after controlling for patch size:
+
+| Feature | r_pb (binary) | rho (scope) | Model coef (binary) |
+|---------|--------------|-------------|---------------------|
+| new_func_defs | **+0.174** | **+0.359** | +0.356 |
+| imp_relative | **-0.072** | **-0.112** | — |
+| additions | -0.017 | +0.051 | **+0.473** |
+| changed_files | -0.020 | +0.013 | **-0.291** |
+| cross_module_spread | -0.014 | +0.020 | **+0.100** |
+| trust_boundary_crossings | -0.001 | +0.028 | +0.047 |
+
+The scope model reveals directional structure invisible to the binary model:
+
+| Feature | none | function | module | lib_component |
+|---------|------|----------|--------|---------------|
+| cross_module_spread | -0.098 | -0.009 | -0.029 | **+0.136** |
+| additions | **-0.400** | +0.053 | **+0.208** | +0.140 |
+| new_func_defs | -0.295 | +0.039 | +0.078 | **+0.177** |
+| imp_total_new | -0.114 | -0.172 | **+0.138** | **+0.149** |
+
+Key finding: `cross_module_spread` specifically predicts **library-component-level**
+refactors (+0.136), not function-level ones. This aligns with the Conway thesis —
+cross-team boundary friction generates broader restructuring demands, not local cleanup.
+
+### Interpretation: Static Features as Prior, Org Preferences as Posterior
+
+Moderate signal is recoverable from patch-level and static features (CV AUROC ~0.66),
+but strong prediction requires learning reviewer preferences and org-specific processes.
+
+This ceiling is not a data limitation. It reflects the fact that refactor requests are
+driven by organizational structure and review culture that patch features alone cannot
+capture. The connection to Conway's thesis is direct:
+
+1. **The org chart is selected first.** Before any code is written, the organization's
+   structure — teams, reporting lines, ownership boundaries — is established.
+
+2. **Task subdivision narrows the design space.** Once work is delegated, the
+   decomposition of the system mirrors the org structure. Each sub-delegation prunes
+   the set of possible designs by making alternatives unpursuable. A reviewer asking
+   for a function extraction, a module split, or a component boundary change is
+   enforcing the org's structural priors on the code.
+
+3. **Preferences are org-specific.** Whether a 200-line function should be split,
+   whether a utility belongs in `common/` or stays local, whether an HTTP client
+   needs a circuit breaker — these decisions vary by team. The static steerer learns
+   the *average* org's preferences. Closing the gap to strong prediction requires
+   RL/RLHF-style adaptation that learns each org's unique review culture.
+
+4. **Legacy/deprecated code carries over additively.** As a consequence of software requirements
+   and rapid iteration, deprecated code (or code clones) is likely to linger across interface boundaries.
+   As the org and delegations evolve, code tends to compound additively, without refactor/ clean rewrites.
+
+The static steerer provides a useful **prior** (e.g., "large PRs introducing new
+functions across module boundaries are likely to draw refactor requests"). The
+**posterior** — strong, actionable guidance — requires adaptation to the specific
+org's processes, which is the role of the RL fine-tuning stage.
+
+### How to Reproduce
+
+```bash
+source .venv/bin/activate
+
+# 1. LLM labeling (any table: prs_copy, go_prs, go_prs_closed)
+python label_refactor_llm.py --table prs_copy --concurrency 2000
+
+# 2. Train binary refactor steerer
+python train_pr_steerer.py \
+  --llm-refactor-labels data/refactor_labels_llm_prs_copy.jsonl
+
+# 3. Train scope steerer
+python train_pr_steerer.py \
+  --llm-refactor-labels data/refactor_labels_llm_prs_copy.jsonl \
+  --refactor-scope-target \
+  --model-out data/phase4_7_pr_steerer_model_scope.json \
+  --metrics-out data/phase4_7_pr_steerer_metrics_scope.json
+
+# 4. Language-specific (e.g., TypeScript)
+python label_refactor_llm.py --table prs_copy --concurrency 2000  # if not already done
+python train_pr_steerer.py \
+  --llm-refactor-labels data/refactor_labels_llm_prs_copy.jsonl \
+  --language typescript \
+  --model-out data/pr_steerer_model_typescript.json \
+  --metrics-out data/pr_steerer_metrics_typescript.json
+
+# 5. Rebuild corpora with LLM labels
+python build_go_pr_steerer_corpus.py --llm-labels data/refactor_labels_llm_go_prs.jsonl
+python build_pr_mdp_dataset_v51.py --llm-labels data/refactor_labels_llm_prs_copy.jsonl
+```
+
+### Files
+
+| File | Role |
+|------|------|
+| `label_refactor_llm.py` | LLM judge for review thread refactor classification |
+| `data/refactor_labels_llm_prs_copy.jsonl` | LLM labels (41k PRs) |
+| `data/phase4_7_pr_steerer_model.json` | Binary refactor steerer (LLM labels) |
+| `data/phase4_7_pr_steerer_model_scope.json` | Ordinal scope steerer |
+
+### Notes
+
+- `label_refactor_llm.py` requires `chat_template_kwargs: {enable_thinking: False}` for
+  qwen3.5_35b_a3b (thinking mode puts output in `reasoning_content`, leaving `content` null).
+- The `--resume` flag skips PRs already in the output file, enabling interrupted runs to continue.
+- LLM labels include `s_t1.refactor_requested` for direct compatibility with `_load_refactor_labels()`.
+
+---
+
 ## Next steps
 
 ### Immediate
 - Run agentic eval (`run_phase5_1_agentic_eval.py`) on the 7k baseline task set
 - Compare: baseline prompt-only vs supervised steerer (Exp 4.7) vs 100k Conway steerer
 - Compute `Avg@8`, `Pass@k`, `AcceptProxy@k` across ablation feature sets
+- Run LLM labeling for TypeScript and other languages; compare per-language steerer metrics
 
 ### Process reward model (future)
 The current steerer is an **outcome reward model (ORM)** — it scores the terminal state.
@@ -353,3 +504,6 @@ steerer the foundation for the next training stage.
 | `data/phase5_1_pr_steerer_metrics_v51_100k_conway.json` | CV metrics |
 | `data/conway_patch_features_100k.jsonl` | Raw per-PR Conway features (100k) |
 | `data/conway_patch_features_summary_100k.json` | Friction/acceptance lift table |
+| `label_refactor_llm.py` | LLM judge for review thread refactor classification |
+| `data/refactor_labels_llm_prs_copy.jsonl` | LLM refactor labels (41k PRs) |
+| `data/phase4_7_pr_steerer_model_scope.json` | Ordinal scope steerer model |
