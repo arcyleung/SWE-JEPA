@@ -7,12 +7,15 @@ import math
 import os
 
 import numpy as np
+import pg8000.native
+import yaml
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import StandardScaler
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
 
 
 def _default_existing(*paths: str) -> str:
@@ -105,10 +108,41 @@ def _load_refactor_labels(path: str | None) -> tuple[dict[tuple[str, int], int],
     return labels, "refactor_requested"
 
 
-def _load(path: str, labels_path: str | None, refactor_target: str):
+def _load_followup_labels_from_db() -> tuple[dict[tuple[str, int], int], str]:
+    """Load binary followup labels from the followups_file Postgres table.
+
+    Returns a map of (repo, pull_number) → 1 for PRs that have at least one
+    followup PR, usable as the refactor/risk head target.
+    """
+    if not os.path.exists(PG_CONFIG_FILE):
+        print(f"WARNING: {PG_CONFIG_FILE} not found, cannot load followup labels from DB")
+        return {}, "review_friction"
+    cfg = yaml.safe_load(open(PG_CONFIG_FILE))
+    conn = pg8000.native.Connection(
+        host=cfg["ip"], port=int(cfg["port"]),
+        user=cfg["user"], password=cfg["password"], database=cfg["database"],
+    )
+    rows = conn.run(
+        "SELECT feature_repo, feature_pr_number FROM followups_file GROUP BY feature_repo, feature_pr_number"
+    )
+    conn.close()
+    labels = {(r[0], int(r[1])): 1 for r in rows}
+    print(f"Loaded {len(labels)} followup labels from followups_file table")
+    return labels, "has_followup"
+
+
+def _load(path: str, labels_path: str | None, refactor_target: str, language: str | None = None):
     rows = [json.loads(ln) for ln in open(path) if ln.strip()]
     if not rows:
         raise ValueError(f"no rows found in {path}")
+
+    if language:
+        lang_lower = language.lower()
+        before = len(rows)
+        rows = [r for r in rows if (r.get("primary_lang") or "").lower() == lang_lower]
+        print(f"Language filter '{language}': {before} → {len(rows)} rows")
+        if not rows:
+            raise ValueError(f"no rows remain after filtering for language={language}")
 
     feature_names = _feature_names_from_row(rows[0])
     label_map, label_source = _load_refactor_labels(labels_path)
@@ -203,10 +237,37 @@ def main():
         default="auto",
         help="Second head target. 'auto' prefers refactor_requested labels when joinable.",
     )
+    ap.add_argument(
+        "--language",
+        default=None,
+        help="Filter features JSONL by primary_lang (e.g. 'python', 'go'). Case-insensitive.",
+    )
+    ap.add_argument(
+        "--followup-labels",
+        action="store_true",
+        help="Read refactor labels from followups_file table in Postgres instead of --labels-data file.",
+    )
     args = ap.parse_args()
 
     refactor_target = "refactor_requested" if args.refactor_target == "auto" else args.refactor_target
-    rows, X, y_acc, y_ref, groups, meta = _load(args.data, args.labels_data, refactor_target)
+
+    if args.followup_labels:
+        # Override the labels_path with DB-sourced followup labels
+        _followup_map, _followup_source = _load_followup_labels_from_db()
+        # Write a temporary JSONL so _load_refactor_labels can consume it
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+        for (repo, pull), val in _followup_map.items():
+            tmp.write(json.dumps({"repo": repo, "pull_number": pull, "s_t1": {"refactor_requested": val}}) + "\n")
+        tmp.close()
+        args.labels_data = tmp.name
+        refactor_target = "refactor_requested"  # use the s_t1.refactor_requested key path
+
+    rows, X, y_acc, y_ref, groups, meta = _load(args.data, args.labels_data, refactor_target, language=args.language)
+
+    if args.followup_labels:
+        meta["refactor_label_source"] = "has_followup"
+        os.unlink(args.labels_data)  # clean up temp file
 
     sc_acc, clf_acc, pred_acc = _fit_one(X, y_acc, args.seed)
     sc_ref, clf_ref, pred_ref = _fit_one(X, y_ref, args.seed + 1)

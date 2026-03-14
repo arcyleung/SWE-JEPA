@@ -45,7 +45,7 @@ def _load_model_cfg(models_yaml: str, model_name: str) -> dict:
 
 
 def _chat(messages: list[dict], model_cfg: dict, max_tokens: int = 4096,
-          retries: int = 3) -> str:
+          retries: int = 5) -> str:
     """Call litellm endpoint; return assistant content string."""
     import litellm
     params = model_cfg["litellm_params"]
@@ -53,6 +53,7 @@ def _chat(messages: list[dict], model_cfg: dict, max_tokens: int = 4096,
     # Normalize: remove trailing /chat/completions if present
     if api_base.endswith("/chat/completions"):
         api_base = api_base[: -len("/chat/completions")]
+    last_exc: Exception | None = None
     for attempt in range(retries):
         try:
             resp = litellm.completion(
@@ -63,12 +64,68 @@ def _chat(messages: list[dict], model_cfg: dict, max_tokens: int = 4096,
                 max_tokens=max_tokens,
                 temperature=0.0,
             )
-            return resp.choices[0].message.content or ""
+            content = resp.choices[0].message.content or ""
+            if content.strip():
+                return content
+            # Empty response — back off and retry (e.g. kimi rate-limit)
+            last_exc = ValueError("empty_response")
+            time.sleep(2 ** attempt)
         except Exception as e:
+            last_exc = e
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
-            else:
-                raise
+    raise last_exc  # type: ignore[misc]
+
+
+def _extract_json_from_response(raw: str) -> str:
+    """Robustly extract the JSON object from a model response.
+
+    Tries in order:
+      1. Markdown ```json ... ``` fence
+      2. Markdown ``` ... ``` fence
+      3. HTML <code> ... </code> block (Gemini sometimes returns HTML)
+      4. First '{' ... last '}' brace-matching fallback
+    """
+    text = raw.strip()
+
+    # 1. ```json fence
+    if "```json" in text:
+        try:
+            s = text[text.index("```json") + 7:]
+            return s[:s.index("```")].strip()
+        except ValueError:
+            pass
+
+    # 2. plain ``` fence
+    if "```" in text:
+        try:
+            s = text[text.index("```") + 3:]
+            return s[:s.index("```")].strip()
+        except ValueError:
+            pass
+
+    # 3. HTML <code> block (Gemini)
+    for open_tag, close_tag in [("<code>", "</code>"), ("<pre>", "</pre>")]:
+        if open_tag in text and close_tag in text:
+            try:
+                s = text[text.index(open_tag) + len(open_tag):]
+                return s[:s.index(close_tag)].strip()
+            except ValueError:
+                pass
+
+    # 4. Brace fallback — find first '{' and its matching '}'
+    start = text.find("{")
+    if start != -1:
+        depth = 0
+        for i, ch in enumerate(text[start:], start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start: i + 1].strip()
+
+    return text  # return as-is and let json.loads decide
 
 
 # ── Patch extraction from trajectories ────────────────────────────────────
@@ -304,14 +361,8 @@ def _score_pair(pair: dict, model_cfg: dict, seed: int = 42) -> dict:
             "a_is": a_is,
         }
 
-    # Parse JSON from response (handle markdown fences)
-    text = raw.strip()
-    if "```json" in text:
-        text = text[text.index("```json") + 7:]
-        text = text[:text.index("```")].strip()
-    elif "```" in text:
-        text = text[text.index("```") + 3:]
-        text = text[:text.index("```")].strip()
+    # Parse JSON from response (handles markdown fences, HTML tags, bare JSON)
+    text = _extract_json_from_response(raw)
 
     try:
         scored = json.loads(text)
