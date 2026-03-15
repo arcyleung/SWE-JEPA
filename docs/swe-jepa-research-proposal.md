@@ -35,6 +35,8 @@ Conway (1968) proved that "organizations which design systems are constrained to
 
 For SWE-JEPA, this implies that the latent space should implicitly encode organizational structure. A function in a core low-layer module that many teams depend on has different structural properties (higher test coverage, lower churn, tighter ownership) than a function in a high-layer application module. Kim et al.'s Table 4 quantifies these correlations precisely: preferentially refactored modules had 13% higher test block coverage, were touched by fewer developers, and had lower organizational cohesiveness scores. These are not properties of the code text — they are properties of the code's *position in a system*, and they are exactly the kind of latent structure that a JEPA-style model should learn to predict.
 
+How this relates to agentic coding depends yet again on the organization structure where the software is engineered, with coding agents. Present coding assistants/ scaffolds follow a pairwise (one-to-one) user/assistant interaction for fast iteration, and an upstream code review process such as PR review is in place by humans and agents for quality control. These processes formed from communication boundaries also informs the range of possible designs; an AI agent with large context may understand and accept a dense/monolith design for efficiency, where a human would prefer microservices for compartmentalized understanding.
+
 ### The Refactoring Quality Signal
 
 Kim et al.'s multivariate regression analysis (Tables 5 and 6) reveals which factors actually predict where refactoring investment is directed and what outcomes it produces. The strongest predictors for refactoring investment are: locality of changes (files per check-in), number of dependent modules, number of defects, and developer count. The strongest predictors for dependency reduction after refactoring are the number of refactoring commits and prior defect count.
@@ -553,49 +555,50 @@ not "next token"; it is "which attempt is more likely to be merged with less fri
 **Failure-loop picture**: Without steering, software-engineering mistakes are often discovered
 only after the patch has already cleared some cheaper filter: self-review, external review, or
 even CI/QA. The ideal 5.1 outcome is to collapse those loops earlier by making the coding model
-look "clairvoyant" about downstream software-engineering failure modes.
+reason and navigate org/architectural problems at test-time, reducing downstream software-engineering
+failure modes and reducing friction through review processes.
 
 ```mermaid
 flowchart TB
-    subgraph L1["Failure Loop 1: Passed PR/CI, failed later in production"]
-        D1["Developer"] --> M1["Coding model<br/>(non-steered)"]
+    subgraph L1["Failure Loop 3: Passed PR/CI, failed later in production"]
+        D1["Developer/Agent"] --> M1["Coding model<br/>(non-steered)"]
         M1 --> P1["Commit & push"]
         P1 --> R1["PR reviewer / CI"]
-        R1 --> Q1["QA / correctness passed"]
+        R1 --> Q1["QA / tests passed"]
         Q1 --> F1["Production failure<br/>(memory leak, hidden bug, etc.)"]
         F1 --> D1
     end
 
     subgraph L2["Failure Loop 2: Failed external senior review"]
-        D2["Developer"] --> M2["Coding model<br/>(non-steered)"]
+        D2["Developer/Agent"] --> M2["Coding model<br/>(non-steered)"]
         M2 --> P2["Commit & push"]
         P2 --> R2["PR reviewer / CI"]
         R2 --> F2["Senior review failure"]
         F2 --> D2
     end
 
-    subgraph L3["Failure Loop 3: Failed developer self-review"]
-        D3["Developer"] --> M3["Coding model<br/>(non-steered)"]
-        M3 --> F3["Developer self-review failure"]
+    subgraph L3["Failure Loop 1: Failed developer self-review"]
+        D3["Developer/Agent"] --> M3["Coding model<br/>(non-steered)"]
+        M3 --> F3["Developer/Agent self-review failure"]
         F3 --> D3
     end
 
-    subgraph L4["Ideal Path: steered coder avoids downstream loops"]
-        D4["Developer"] --> M4["Coding model<br/>(steered)"]
-        M4 --> S4["Successful feature<br/>(architecturally + organizationally informed;<br/>more &quot;clairvoyant&quot; about SWE failure modes)"]
+    subgraph L4["Ideal Path: no downstream failure"]
+        D4["Developer/Agent"] --> M4["Coding model<br/>(steered)"]
+        M4 --> S4["Successful feature<br/>(architecturally + organizationally informed)"]
     end
 
     classDef fail fill:#fbe4e6,stroke:#c00000,color:#111;
     classDef ideal fill:#e2efda,stroke:#538135,color:#111;
 
-    F1 --> D2
-    F2 --> D3
-    F3 --> D4
+    D1 --> D2
+    D2 --> D3
+    D3 --> M4
 
     class D1,M1,P1,R1,Q1,F1,D2,M2,P2,R2,F2,D3,M3,F3 fail;
     class D4,M4,S4 ideal;
 
-    linkStyle 16,17,18 stroke:transparent,fill:none;
+  linkStyle 16,17,18 stroke:transparent,fill:none;
 ```
 
 **Why this is the right first RL target**:
