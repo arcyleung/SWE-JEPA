@@ -93,6 +93,31 @@ Two feature sets were compared with repo-grouped 5-fold CV:
 
 This is the opposite of the hoped-for result. The current trajectory summary is not yet extracting a better supervisory signal than the terminal patch alone. A likely explanation is that the trajectory features are still too coarse: first/final deltas and simple volatility summaries do not separate "useful iterative refinement" from "extra churn" well enough, so the history block adds variance without enough directional signal.
 
+## Follow-On Combined Merged+Closed Retrain
+
+To remove the constant-acceptance limitation in the 4.7.2 merged-only dataset, the
+terminal-patch steerer was retrained on the completed Python merged+closed corpus:
+
+- merged source: `prs_copy` rows with `primary_language='Python'`
+- closed source: `python_js_ts_rust_closed_prs` rows with recovered patches
+- corpus size: `74,810` PRs across `1,053` repos
+
+### Selected downstream metrics
+
+| Variant | Acceptance target | Rows | Acc pos rate | Acc CV AUROC | Acc CV PR-AUC | Ref pos rate | Ref CV AUROC | Ref CV PR-AUC |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `python merged+closed` | `accepted` | 74,810 | 72.1% | 0.724 | 0.835 | 13.7% | 0.721 | 0.271 |
+
+### Downstream readout
+
+- This retrain is the preferred terminal-patch steerer for Python PRs because it uses
+  real merged/unmerged labels instead of `acceptance_proxy`.
+- The old 4.7.2 history block remains useful as analysis infrastructure, but it is not
+  the selected downstream model family.
+- Applying an extra patch-level `primary_lang=python` filter reduced the corpus to
+  `59,851` rows and slightly worsened the aggregate score (`0.638 -> 0.631`), so the
+  selected retrain keeps the full source-filtered Python PR corpus.
+
 ## Artifacts
 
 - Snapshot rows: `data/phase4_7_2_slurm_ramcache_v1/merged.jsonl`
@@ -102,3 +127,7 @@ This is the opposite of the hoped-for result. The current trajectory summary is 
 - Static vs history metrics: `data/phase4_7_2_pr_steerer_history_compare.json`
 - Static baseline model: `data/phase4_7_2_pr_steerer_static_model.json`
 - Trajectory-aware model: `data/phase4_7_2_pr_steerer_history_model.json`
+- Cross-family comparison: `docs/phase4_7_2_pr_steerer_compare.md`
+- Cross-family summary JSON: `data/phase4_7_2_pr_steerer_variant_compare_summary.json`
+- Selected Python merged+closed metrics: `data/phase5_1_python_pr_corpus_slurm_v1/pr_steerer_metrics_python_merged_closed_allrows.json`
+- Selected Python merged+closed model: `data/phase5_1_python_pr_corpus_slurm_v1/pr_steerer_model_python_merged_closed_allrows.json`

@@ -11,6 +11,7 @@ LIMIT="${LIMIT:-0}"
 
 python backfill_go_prs_closed_patches.py \
   --table python_js_ts_rust_closed_prs \
+  --language python \
   --workers "$WORKERS" \
   --limit "$LIMIT" \
   "$@"

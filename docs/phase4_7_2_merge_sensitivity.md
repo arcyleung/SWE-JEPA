@@ -58,3 +58,25 @@ The selection rule for downstream training is simple:
 
 - keep merge rows if the primary risk-proxy trend weakens when they are removed
 - otherwise train on the merge-excluded row slice
+
+## Downstream Implication
+
+The merge-row sensitivity result is specific to the 4.7.2 merged-history dataset. It
+decides whether the merged-only trajectory analysis should keep sampled merge snapshots;
+it does not imply that the downstream terminal-patch steerer should stay on merged-only
+data.
+
+The selected follow-on retrain now uses the combined Python merged+closed PR corpus:
+
+| Variant | Dataset | Rows | Acc pos rate | Acc CV AUROC | Acc CV PR-AUC | Ref pos rate | Ref CV AUROC | Ref CV PR-AUC |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `python merged+closed` | terminal patch, one row per PR | 74,810 | 72.1% | 0.724 | 0.835 | 13.7% | 0.721 | 0.271 |
+
+Readout:
+
+- The merge-exclusion choice remains a robustness check for `phase4_7_2`, not the
+  selected deployment training slice.
+- The stronger downstream move is to use real closed-PR negatives, which removes the
+  constant-acceptance problem entirely.
+- The detailed cross-family comparison now lives in `docs/phase4_7_2_pr_steerer_compare.md`
+  with artifact-backed summaries in `data/phase4_7_2_pr_steerer_variant_compare_summary.json`.

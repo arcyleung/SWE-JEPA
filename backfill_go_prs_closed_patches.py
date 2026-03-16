@@ -255,11 +255,13 @@ def _get_rows(
         f"""
         select repo, pull_number, primary_language, patch, file_patches, pr_url
         from {table}
-        where patch is null
-           or file_patches is null
-           or non_test_patch is null
-           or test_file_patches is null
-           or has_fix_patch is null
+        where (
+               patch is null
+            or file_patches is null
+            or non_test_patch is null
+            or test_file_patches is null
+            or has_fix_patch is null
+        )
           {language_sql}
         order by created_at desc nulls last
         {lim_sql}
