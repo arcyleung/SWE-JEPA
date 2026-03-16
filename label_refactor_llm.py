@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """LLM-judged refactor labeling for PR review comments.
 
-Reads review comments from Postgres (prs_copy / go_prs / go_prs_closed),
+Reads review comments from Postgres (prs_copy / go_prs / go_prs_closed /
+python_js_ts_rust_closed_prs),
 sends each PR's review threads to qwen3.5_35b_a3b via local replicas
 (round-robin), and writes labeled JSONL.
 
 Usage:
     python label_refactor_llm.py --table prs_copy --limit 20 --concurrency 4
     python label_refactor_llm.py --table go_prs --concurrency 2000
+    python label_refactor_llm.py --table python_js_ts_rust_closed_prs --language python --concurrency 2000
 """
 from __future__ import annotations
 
@@ -25,6 +27,11 @@ import yaml
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")
 MODELS_YAML = os.path.join(ROOT, "models.yaml")
+
+
+def _slug(value: str | None) -> str:
+    out = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip())
+    return out.strip("_")
 
 SYSTEM_PROMPT = """\
 You are a code review analyst. You classify whether a review thread \
@@ -165,8 +172,18 @@ def _extract_threads(review_threads: Any, comments: Any) -> list[str]:
 # ── DB queries ──────────────────────────────────────────────────────────────
 
 
-def _fetch_prs(conn: pg8000.native.Connection, table: str, limit: int) -> list[dict]:
+def _fetch_prs(
+    conn: pg8000.native.Connection,
+    table: str,
+    limit: int,
+    language: str | None = None,
+) -> list[dict]:
     limit_sql = f"LIMIT {int(limit)}" if limit > 0 else ""
+    params: dict[str, Any] = {}
+    language_sql = ""
+    if language:
+        language_sql = "AND lower(primary_language) = :language_lower"
+        params["language_lower"] = str(language).lower()
 
     if table == "prs_copy":
         rows = conn.run(
@@ -175,20 +192,24 @@ def _fetch_prs(conn: pg8000.native.Connection, table: str, limit: int) -> list[d
             FROM prs_copy
             WHERE review_threads IS NOT NULL
               AND review_threads != '[]'
+              {language_sql}
             ORDER BY created_at DESC NULLS LAST
             {limit_sql}
             """,
+            **params,
         )
-    elif table in ("go_prs", "go_prs_closed"):
+    elif table in ("go_prs", "go_prs_closed", "python_js_ts_rust_closed_prs"):
         rows = conn.run(
             f"""
             SELECT repo, pull_number, review_threads, comments
             FROM {table}
             WHERE review_threads IS NOT NULL
               AND review_threads != '[]'
+              {language_sql}
             ORDER BY created_at DESC NULLS LAST
             {limit_sql}
             """,
+            **params,
         )
     else:
         raise ValueError(f"unsupported table: {table}")
@@ -376,15 +397,32 @@ async def _run(
 
 def main():
     ap = argparse.ArgumentParser(description="LLM-judged refactor labeling")
-    ap.add_argument("--table", required=True, choices=["prs_copy", "go_prs", "go_prs_closed"])
-    ap.add_argument("--out", default=None, help="Output JSONL path (default: data/refactor_labels_llm_{table}.jsonl)")
+    ap.add_argument(
+        "--table",
+        required=True,
+        choices=["prs_copy", "go_prs", "go_prs_closed", "python_js_ts_rust_closed_prs"],
+    )
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="Output JSONL path (default adds table name, plus _{language} when --language is set).",
+    )
+    ap.add_argument(
+        "--language",
+        default=None,
+        help="Optional primary_language filter for mixed-language tables (e.g. 'python').",
+    )
     ap.add_argument("--concurrency", type=int, default=2000)
     ap.add_argument("--limit", type=int, default=0, help="Limit PRs to process (0 = all)")
     ap.add_argument("--resume", action="store_true", help="Skip PRs already in output file")
     ap.add_argument("--replicas", nargs="*", default=None, help="Override replica URLs")
     args = ap.parse_args()
 
-    out_path = args.out or os.path.join(ROOT, "data", f"refactor_labels_llm_{args.table}.jsonl")
+    if args.out:
+        out_path = args.out
+    else:
+        suffix = f"_{_slug(args.language)}" if args.language else ""
+        out_path = os.path.join(ROOT, "data", f"refactor_labels_llm_{args.table}{suffix}.jsonl")
     summary_path = out_path.replace(".jsonl", "_summary.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -419,7 +457,7 @@ def main():
     # Fetch from DB
     print(f"Fetching PRs from {args.table}...", flush=True)
     conn = _load_db()
-    prs = _fetch_prs(conn, args.table, args.limit)
+    prs = _fetch_prs(conn, args.table, args.limit, args.language)
     conn.close()
     print(f"  {len(prs)} PRs with review threads", flush=True)
 

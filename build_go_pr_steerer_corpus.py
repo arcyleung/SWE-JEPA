@@ -35,6 +35,26 @@ _REPO_DIRS: dict[str, str] = {}
 _LLM_LABEL_MAP: dict[tuple[str, int], dict] = {}
 
 
+def _slug(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _default_outputs(
+    merged_table: str,
+    closed_table: str,
+    language: str | None,
+) -> tuple[str, str, str]:
+    lang_slug = _slug(language)
+    if merged_table == "go_prs" and closed_table == "go_prs_closed" and lang_slug in ("", "go"):
+        return DEFAULT_OUT, DEFAULT_LABELS, DEFAULT_SUMMARY
+    base = lang_slug or f"{_slug(merged_table)}_{_slug(closed_table)}"
+    return (
+        os.path.join(ROOT, "data", f"conway_patch_features_{base}_merged_closed.jsonl"),
+        os.path.join(ROOT, "data", f"{base}_pr_labels.jsonl"),
+        os.path.join(ROOT, "data", f"{base}_pr_corpus_summary.json"),
+    )
+
+
 def _load_db() -> pg8000.native.Connection:
     cfg = yaml.safe_load(open(PG_CONFIG_FILE))
     return pg8000.native.Connection(
@@ -58,6 +78,7 @@ def _j(v: Any) -> Any:
 
 
 def _go_file_list(file_patches: Any, non_test_patch_files: Any, test_patch_files: Any, patch: str) -> Any:
+    """Recover a filename list from either prs_copy-style JSON or split patch fields."""
     names = _filenames(file_patches)
     if names:
         return names
@@ -97,21 +118,57 @@ def _fetch_rows(
     limit: int,
     shard_modulus: int,
     shard_remainder: int,
+    language: str | None,
 ) -> list[tuple[Any, ...]]:
     limit_sql = f"limit {int(limit)}" if limit > 0 else ""
     shard_sql = ""
     params: dict[str, Any] = {"ref_regex": REFACTOR_SQL_REGEX}
+    language_sql = ""
+    if language:
+        language_sql = "and lower(primary_language) = :language_lower"
+        params["language_lower"] = str(language).lower()
     if shard_modulus > 0:
         shard_sql = (
             "and mod(abs(hashtext(repo || '#' || pull_number::text)), :shard_modulus) = :shard_remainder"
         )
         params["shard_modulus"] = int(shard_modulus)
         params["shard_remainder"] = int(shard_remainder)
+    if table == "prs_copy":
+        return conn.run(
+            f"""
+            select
+                repo,
+                instance_id,
+                pull_number,
+                base_sha,
+                pr_merged,
+                pr_is_draft,
+                changed_files,
+                additions,
+                deletions,
+                total_review_threads,
+                total_comments,
+                ((coalesce(review_threads::text, '') || ' ' || coalesce(comments::text, '')) ~* :ref_regex) as refactor_requested,
+                patch,
+                file_patches,
+                null::text as non_test_patch_files,
+                null::text as test_patch_files
+            from prs_copy
+            where patch is not null
+              and file_patches is not null
+              {language_sql}
+              {shard_sql}
+            order by created_at desc nulls last
+            {limit_sql}
+            """,
+            **params,
+        )
     if table == "go_prs":
         return conn.run(
             f"""
             select
                 repo,
+                null::text as instance_id,
                 pull_number,
                 base_sha,
                 pr_merged,
@@ -129,6 +186,7 @@ def _fetch_rows(
             from go_prs
             where patch is not null
               and non_test_patch is not null
+              {language_sql}
               {shard_sql}
             order by created_at desc nulls last
             {limit_sql}
@@ -140,6 +198,7 @@ def _fetch_rows(
             f"""
             select
                 repo,
+                null::text as instance_id,
                 pull_number,
                 base_sha,
                 pr_merged,
@@ -157,6 +216,37 @@ def _fetch_rows(
             from go_prs_closed
             where patch is not null
               and non_test_patch is not null
+              {language_sql}
+              {shard_sql}
+            order by created_at desc nulls last
+            {limit_sql}
+            """,
+            **params,
+        )
+    if table == "python_js_ts_rust_closed_prs":
+        return conn.run(
+            f"""
+            select
+                repo,
+                null::text as instance_id,
+                pull_number,
+                base_sha,
+                pr_merged,
+                pr_is_draft,
+                changed_files,
+                additions,
+                deletions,
+                total_review_threads,
+                total_comments,
+                ((coalesce(review_threads::text, '') || ' ' || coalesce(comments::text, '')) ~* :ref_regex) as refactor_requested,
+                patch,
+                null::text as file_patches,
+                non_test_patch_files,
+                test_patch_files
+            from python_js_ts_rust_closed_prs
+            where patch is not null
+              and non_test_patch is not null
+              {language_sql}
               {shard_sql}
             order by created_at desc nulls last
             {limit_sql}
@@ -172,6 +262,7 @@ def _worker(
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, Counter]:
     (
         repo,
+        instance_id,
         pull_number,
         base_sha,
         pr_merged,
@@ -219,7 +310,7 @@ def _worker(
         stats[f"extract_error__{type(exc).__name__}"] += 1
         return None, None, stats
 
-    iid = _synthetic_instance_id(str(repo), int(pull_number), source_table)
+    iid = str(instance_id or "") or _synthetic_instance_id(str(repo), int(pull_number), source_table)
     feature_row = {
         "repo": str(repo),
         "instance_id": iid,
@@ -260,49 +351,91 @@ def _init_worker(repo_dirs: dict[str, str], llm_label_map: dict[tuple[str, int],
         _LLM_LABEL_MAP = llm_label_map
 
 
-def _load_llm_labels(path: str) -> dict[tuple[str, int], dict]:
-    """Load pre-computed LLM refactor labels from label_refactor_llm.py output."""
+def _load_llm_labels(paths: list[str]) -> dict[tuple[str, int], dict]:
+    """Load pre-computed LLM refactor labels from one or more label_refactor_llm.py outputs."""
     labels: dict[tuple[str, int], dict] = {}
-    with open(path) as f:
-        for ln in f:
-            if not ln.strip():
-                continue
-            row = json.loads(ln)
-            key = (str(row["repo"]), int(row["pull_number"]))
-            labels[key] = row
+    for path in paths:
+        with open(path) as f:
+            for ln in f:
+                if not ln.strip():
+                    continue
+                row = json.loads(ln)
+                key = (str(row["repo"]), int(row["pull_number"]))
+                labels[key] = row
     return labels
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=DEFAULT_OUT)
-    ap.add_argument("--labels-out", default=DEFAULT_LABELS)
-    ap.add_argument("--summary-out", default=DEFAULT_SUMMARY)
+    ap = argparse.ArgumentParser(
+        description="Build a merged+closed PR steerer corpus from Go-specific or language-filtered PR tables.",
+    )
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--labels-out", default=None)
+    ap.add_argument("--summary-out", default=None)
+    ap.add_argument("--merged-table", default="go_prs", help="Merged PR source table (e.g. go_prs, prs_copy).")
+    ap.add_argument(
+        "--closed-table",
+        default="go_prs_closed",
+        help="Closed PR source table (e.g. go_prs_closed, python_js_ts_rust_closed_prs).",
+    )
+    ap.add_argument("--language", default=None, help="Optional primary_language filter (e.g. 'python', 'go').")
     ap.add_argument("--workers", type=int, default=128)
     ap.add_argument("--submit-batch-size", type=int, default=4096)
     ap.add_argument("--limit-merged", type=int, default=0)
     ap.add_argument("--limit-closed", type=int, default=0)
     ap.add_argument("--shard-modulus", type=int, default=0)
     ap.add_argument("--shard-remainder", type=int, default=0)
-    ap.add_argument("--llm-labels", default=None,
-                    help="Path to LLM-judged refactor labels JSONL. When provided, replaces SQL regex labeling.")
+    ap.add_argument(
+        "--llm-labels",
+        nargs="+",
+        default=None,
+        help="One or more LLM-judged refactor label JSONL files. When provided, replaces SQL regex labeling.",
+    )
     args = ap.parse_args()
 
+    if args.out is None or args.labels_out is None or args.summary_out is None:
+        default_out, default_labels, default_summary = _default_outputs(
+            args.merged_table,
+            args.closed_table,
+            args.language,
+        )
+        args.out = args.out or default_out
+        args.labels_out = args.labels_out or default_labels
+        args.summary_out = args.summary_out or default_summary
+
     conn = _load_db()
-    merged_rows = _fetch_rows(conn, "go_prs", args.limit_merged, args.shard_modulus, args.shard_remainder)
-    print(f"fetched go_prs rows: {len(merged_rows)}", flush=True)
-    closed_rows = _fetch_rows(conn, "go_prs_closed", args.limit_closed, args.shard_modulus, args.shard_remainder)
-    print(f"fetched go_prs_closed rows: {len(closed_rows)}", flush=True)
+    merged_rows = _fetch_rows(
+        conn,
+        args.merged_table,
+        args.limit_merged,
+        args.shard_modulus,
+        args.shard_remainder,
+        args.language,
+    )
+    print(f"fetched {args.merged_table} rows: {len(merged_rows)}", flush=True)
+    closed_rows = _fetch_rows(
+        conn,
+        args.closed_table,
+        args.limit_closed,
+        args.shard_modulus,
+        args.shard_remainder,
+        args.language,
+    )
+    print(f"fetched {args.closed_table} rows: {len(closed_rows)}", flush=True)
     conn.close()
 
-    rows: list[tuple[str, tuple[Any, ...]]] = [("go_prs", r) for r in merged_rows] + [("go_prs_closed", r) for r in closed_rows]
+    rows: list[tuple[str, tuple[Any, ...]]] = [
+        (args.merged_table, r) for r in merged_rows
+    ] + [
+        (args.closed_table, r) for r in closed_rows
+    ]
     repo_dirs = _repo_dir_map()
     print(f"repo_dir map size: {len(repo_dirs)}", flush=True)
 
     llm_label_map: dict[tuple[str, int], dict] | None = None
     if args.llm_labels:
         llm_label_map = _load_llm_labels(args.llm_labels)
-        print(f"Loaded {len(llm_label_map)} LLM refactor labels from {args.llm_labels}", flush=True)
+        print(f"Loaded {len(llm_label_map)} LLM refactor labels from {len(args.llm_labels)} file(s)", flush=True)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     os.makedirs(os.path.dirname(args.labels_out), exist_ok=True)
@@ -343,6 +476,9 @@ def main() -> None:
                         )
 
     summary = {
+        "language": args.language,
+        "merged_table": args.merged_table,
+        "closed_table": args.closed_table,
         "rows_requested": len(rows),
         "rows_emitted": int(counters.get("rows_ok", 0)),
         "rows_merged_source": len(merged_rows),
@@ -355,8 +491,8 @@ def main() -> None:
             if k.startswith("extract_error") or k.startswith("skipped_")
         },
         "by_source": {
-            "go_prs": int(counters.get("rows_ok__go_prs", 0)),
-            "go_prs_closed": int(counters.get("rows_ok__go_prs_closed", 0)),
+            table: int(counters.get(f"rows_ok__{table}", 0))
+            for table in dict.fromkeys([args.merged_table, args.closed_table])
         },
         "out": args.out,
         "labels_out": args.labels_out,

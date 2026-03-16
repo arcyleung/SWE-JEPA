@@ -69,6 +69,23 @@ LOG1P_FEATURES = frozenset(
 )
 
 
+def _slug(value: str | None) -> str:
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip()).strip("_")
+
+
+def _default_output_paths(data_path: str, language: str | None) -> tuple[str, str]:
+    lang_slug = _slug(language)
+    if data_path == DEFAULT_DATA and not lang_slug:
+        return DEFAULT_MODEL, DEFAULT_METRICS
+    stem = os.path.splitext(os.path.basename(data_path))[0]
+    stem = stem.removeprefix("conway_patch_features_")
+    suffix = lang_slug or _slug(stem) or "custom"
+    return (
+        os.path.join(ROOT, "data", f"pr_steerer_model_{suffix}.json"),
+        os.path.join(ROOT, "data", f"pr_steerer_metrics_{suffix}.json"),
+    )
+
+
 def _feature_names_from_row(row: dict) -> list[str]:
     names = []
     for key, value in row.items():
@@ -269,8 +286,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=DEFAULT_DATA)
     ap.add_argument("--labels-data", default=DEFAULT_LABELS)
-    ap.add_argument("--model-out", default=DEFAULT_MODEL)
-    ap.add_argument("--metrics-out", default=DEFAULT_METRICS)
+    ap.add_argument("--model-out", default=None, help="Output model JSON (default adapts to --data/--language).")
+    ap.add_argument("--metrics-out", default=None, help="Output metrics JSON (default adapts to --data/--language).")
     ap.add_argument("--cv-folds", type=int, default=5)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument(
@@ -300,6 +317,11 @@ def main():
         help="Train refactor head on ordinal scope (none=0, function=1, module=2, library_component=3) instead of binary refactor_requested.",
     )
     args = ap.parse_args()
+
+    if args.model_out is None or args.metrics_out is None:
+        default_model_out, default_metrics_out = _default_output_paths(args.data, args.language)
+        args.model_out = args.model_out or default_model_out
+        args.metrics_out = args.metrics_out or default_metrics_out
 
     refactor_target = "refactor_requested" if args.refactor_target == "auto" else args.refactor_target
 

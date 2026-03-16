@@ -4,8 +4,11 @@ __pycache__
 .venv
 .claude
 checkpoints
+logs
 faiss_indices
 data/phase*
 data/_trash*
 data/*.patch
+data/go_ablation_v1
+data/*_followup_eval
 unshallow_repos_test/*.jsonl

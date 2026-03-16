@@ -35,6 +35,8 @@ TEST_INDICATORS = [
 ]
 
 ADDED_COLUMNS = {
+    "file_patches": "jsonb",
+    "test_file_patches": "jsonb",
     "non_test_patch": "text",
     "non_test_patch_files": "text[]",
     "test_patch_files": "text[]",
@@ -56,6 +58,20 @@ ADDED_COLUMNS = {
 }
 
 
+def _table_slug(table: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(table).strip().lower()).strip("_") or "closed_prs"
+
+
+def _default_outputs(table: str) -> tuple[str, str]:
+    if table == "go_prs_closed":
+        return DEFAULT_JSON, DEFAULT_MD
+    slug = _table_slug(table)
+    return (
+        os.path.join(ROOT, "data", f"{slug}_patch_backfill_summary.json"),
+        os.path.join(ROOT, "docs", f"{slug}_patch_backfill.md"),
+    )
+
+
 def _load_db() -> pg8000.native.Connection:
     cfg = yaml.safe_load(open(PG_CONFIG_FILE))
     return pg8000.native.Connection(
@@ -70,7 +86,23 @@ def _load_db() -> pg8000.native.Connection:
 def _to_jsonb(v: Any) -> str | None:
     if v is None:
         return None
-    return json.dumps(v, ensure_ascii=False)
+    return json.dumps(_sanitize_json_value(v), ensure_ascii=False)
+
+
+def _clean_text(v: str | None) -> str | None:
+    if v is None:
+        return None
+    return v.replace("\x00", "")
+
+
+def _sanitize_json_value(v: Any) -> Any:
+    if isinstance(v, str):
+        return _clean_text(v)
+    if isinstance(v, list):
+        return [_sanitize_json_value(item) for item in v]
+    if isinstance(v, dict):
+        return {str(k): _sanitize_json_value(val) for k, val in v.items()}
+    return v
 
 
 def _parse_sections(patch: str) -> list[tuple[str | None, list[str]]]:
@@ -207,18 +239,32 @@ def _ensure_columns(conn: pg8000.native.Connection, table: str) -> None:
             conn.run(f"alter table {table} add column {col} {col_type}")
 
 
-def _get_rows(conn: pg8000.native.Connection, table: str, limit: int) -> list[tuple[Any, ...]]:
+def _get_rows(
+    conn: pg8000.native.Connection,
+    table: str,
+    limit: int,
+    language: str | None = None,
+) -> list[tuple[Any, ...]]:
     lim_sql = f"limit {int(limit)}" if limit > 0 else ""
+    params: dict[str, Any] = {}
+    language_sql = ""
+    if language:
+        language_sql = "and lower(primary_language) = :language_lower"
+        params["language_lower"] = str(language).lower()
     return conn.run(
         f"""
         select repo, pull_number, primary_language, patch, file_patches, pr_url
         from {table}
         where patch is null
+           or file_patches is null
            or non_test_patch is null
+           or test_file_patches is null
            or has_fix_patch is null
+          {language_sql}
         order by created_at desc nulls last
         {lim_sql}
-        """
+        """,
+        **params,
     )
 
 
@@ -227,6 +273,7 @@ def _update_row(
     table: str,
     repo: str,
     pull_number: int,
+    primary_language: str | None,
     patch: str | None,
     file_patches: list[dict[str, Any]] | None,
     split: dict[str, Any],
@@ -239,6 +286,11 @@ def _update_row(
     rate_limit = graphql.get("rate_limit") or {}
     errors = graphql.get("errors") or []
     viewer = graphql.get("viewer") or {}
+    resolved_language = str(primary_language).strip() if primary_language else None
+    patch = _clean_text(patch)
+    test_patch = _clean_text(split.get("test_patch"))
+    non_test_patch = _clean_text(split.get("non_test_patch"))
+    step13_error = _clean_text(step13_error)
     conn.run(
         f"""
         update {table}
@@ -252,8 +304,8 @@ def _update_row(
             has_fix_patch = :has_fix_patch,
             has_test_patch = :has_test_patch,
             is_splittable = :is_splittable,
-            repo_language = coalesce(repo_language, primary_language),
-            extracted_language = coalesce(extracted_language, 'Go'),
+            repo_language = coalesce(repo_language, primary_language, :resolved_language),
+            extracted_language = coalesce(extracted_language, :resolved_language),
             step13_error = :step13_error,
             graphql_viewer_login = :graphql_viewer_login,
             graphql_rate_limit_remaining = :graphql_rate_limit_remaining,
@@ -270,14 +322,15 @@ def _update_row(
         pull_number=int(pull_number),
         patch=patch,
         file_patches=_to_jsonb(file_patches),
-        test_patch=split.get("test_patch"),
+        test_patch=test_patch,
         test_file_patches=_to_jsonb(test_file_patches),
-        non_test_patch=split.get("non_test_patch"),
+        non_test_patch=non_test_patch,
         non_test_patch_files=split.get("non_test_patch_files"),
         test_patch_files=split.get("test_patch_files"),
         has_fix_patch=split.get("has_fix_patch"),
         has_test_patch=split.get("has_test_patch"),
         is_splittable=split.get("is_splittable"),
+        resolved_language=resolved_language,
         step13_error=step13_error,
         graphql_viewer_login=viewer.get("login"),
         graphql_rate_limit_remaining=rate_limit.get("remaining"),
@@ -285,7 +338,7 @@ def _update_row(
         graphql_rate_limit_cost=rate_limit.get("cost"),
         graphql_errors_text=json.dumps(errors, ensure_ascii=False) if errors else None,
         graphql_errors_count=len(errors),
-        raw_json_text=json.dumps(source_meta, ensure_ascii=False) if source_meta is not None else None,
+        raw_json_text=json.dumps(_sanitize_json_value(source_meta), ensure_ascii=False) if source_meta is not None else None,
         inserted_at=now.isoformat(),
         updated_at_db=now.isoformat(),
     )
@@ -301,11 +354,8 @@ def _worker(client: GitHubClient, repo: str, pull_number: int) -> tuple[str | No
 
 
 def _render_report(summary: dict[str, Any], out_path: str) -> None:
-    def pct(v: float) -> str:
-        return f"{100.0 * v:.1f}%"
-
     lines = [
-        "# Experiment 4.7.3 — go_prs_closed Patch Recovery",
+        f"# Closed PR Patch Recovery: {summary['table']}",
         "",
         f"- Rows targeted: `{summary['target_rows']}`",
         f"- Rows updated: `{summary['updated_rows']}`",
@@ -321,7 +371,8 @@ def _render_report(summary: dict[str, Any], out_path: str) -> None:
         "## Notes",
         "",
         "- Patch splitting follows the legacy `explore_agent_simple.py` test-file heuristic.",
-        "- The current implementation stores both old `prs_copy`-style fields (`file_patches`, `test_file_patches`) and new Go-style split fields (`non_test_patch`, `*_patch_files`, split flags).",
+        "- The current implementation stores both `prs_copy`-style JSON patch fields (`file_patches`, `test_file_patches`) and split patch fields (`non_test_patch`, `*_patch_files`, split flags).",
+        "- `repo_language` / `extracted_language` now default from each row's `primary_language`, so mixed-language closed tables can be backfilled with one run.",
     ]
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
@@ -334,9 +385,15 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--source-dir", default=SOURCE_DIR)
-    ap.add_argument("--summary-out", default=DEFAULT_JSON)
-    ap.add_argument("--report-out", default=DEFAULT_MD)
+    ap.add_argument("--language", default=None, help="Optional primary_language filter for mixed-language tables.")
+    ap.add_argument("--summary-out", default=None)
+    ap.add_argument("--report-out", default=None)
     args = ap.parse_args()
+
+    if args.summary_out is None or args.report_out is None:
+        default_summary_out, default_report_out = _default_outputs(args.table)
+        args.summary_out = args.summary_out or default_summary_out
+        args.report_out = args.report_out or default_report_out
 
     tokens = _load_tokens(TOKENS_YAML)
     client = GitHubClient(tokens)
@@ -345,16 +402,20 @@ def main() -> None:
     stats: Counter[str] = Counter()
     try:
         _ensure_columns(conn, args.table)
-        rows = _get_rows(conn, args.table, args.limit)
+        rows = _get_rows(conn, args.table, args.limit, args.language)
         stats["target_rows"] = len(rows)
         with ThreadPoolExecutor(max_workers=max(1, int(args.workers))) as ex:
             futs = {
-                ex.submit(_worker, client, str(repo), int(pull_number)): (str(repo), int(pull_number))
+                ex.submit(_worker, client, str(repo), int(pull_number)): (
+                    str(repo),
+                    int(pull_number),
+                    str(_primary_language) if _primary_language else None,
+                )
                 for repo, pull_number, _primary_language, _patch, _file_patches, _pr_url in rows
             }
             done = 0
             for fut in as_completed(futs):
-                repo, pull_number = futs[fut]
+                repo, pull_number, primary_language = futs[fut]
                 patch, files, err = fut.result()
                 source_meta = source_map.get((repo, pull_number))
                 if patch:
@@ -370,7 +431,18 @@ def main() -> None:
                     stats["has_test_patch"] += 1
                 if split.get("is_splittable"):
                     stats["is_splittable"] += 1
-                _update_row(conn, args.table, repo, pull_number, patch, files, split, source_meta, err)
+                _update_row(
+                    conn,
+                    args.table,
+                    repo,
+                    pull_number,
+                    primary_language,
+                    patch,
+                    files,
+                    split,
+                    source_meta,
+                    err,
+                )
                 done += 1
                 stats["updated_rows"] = done
                 if done % 100 == 0 or done == len(futs):
@@ -380,6 +452,7 @@ def main() -> None:
 
     summary = {
         "table": args.table,
+        "language": args.language,
         "target_rows": int(stats.get("target_rows", 0)),
         "updated_rows": int(stats.get("updated_rows", 0)),
         "patch_success": int(stats.get("patch_success", 0)),
