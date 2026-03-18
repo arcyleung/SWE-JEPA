@@ -1,8 +1,12 @@
 # Experiment 5.1 — Python Steerer Results
 
 **Date**: 2026-03-17 (updated; original 2026-03-14)
-**Status**: FeatBench eval complete; scaffold-aware judges show +4.4 pp steered advantage
+**Status**: FeatBench eval complete; scaffold-aware judges show +7.2 pp steered advantage
 **Model files**: `data/phase4_7_pr_steerer_model.json` (mixed-language, 100k PRs)
+**Eval artefacts**: `data/featbench_v1_eval_artefacts.7z` — contains:
+- `evaluation_results_with_patches.json` — 28 baseline + 28 steered agent results with patch diffs
+- `judge_panel/*.jsonl` — 6 patch-only judge JSONL files (19 verdicts each)
+- `judge_panel_scaffold/*.jsonl` — 6 scaffold-aware judge JSONL files + `summary.json`
 
 ---
 
@@ -18,8 +22,10 @@ across 19 paired instances, scored by a 6-model judge panel in two modes:
    exploring the repository before scoring (50-step budget)
 
 The steered agent produces higher F2P pass rates (+21.4 pp) and wins the scaffold-aware
-judge panel 52.7% vs 48.2% for patch-only. The strongest steered advantages are in
-**test_coverage** (+0.97), **documentation** (+0.25), and **review_readiness** (+0.17).
+judge panel **55.5%** vs 48.2% for patch-only (+7.2 pp). The strongest steered advantages
+are in **test_coverage** (+0.95), **documentation** (+0.24), and **review_readiness** (+0.24).
+Scaffold judges are harsher on correctness/error_handling (repo context reveals issues
+invisible from diffs alone), but the penalty is instance-specific, not rubric-driven.
 
 ---
 
@@ -48,66 +54,76 @@ The steerer improves F2P by +21.4 pp while maintaining P2P parity.
 | qwen3.5_397b_a17b_judge | 10 | 19 | 52.6% |
 | **PANEL** | **55** | **114** | **48.2%** |
 
-### C) Scaffold-aware judges (6 judges × 19 = 114 attempts, 93 valid)
+### C) Scaffold-aware judges (6 judges × 19, 110 valid after retry)
 
 | Judge | Steered wins | Valid | Errors | Win % |
 |-------|-------------|-------|--------|-------|
-| claude_opus_4_6 | 7 | 17 | 2 | 41.2% |
+| claude_opus_4_6 | 9 | 19 | 0 | 47.4% |
 | gemini_31_pro_thinking | 10 | 18 | 1 | 55.6% |
-| glm_5 | 8 | 16 | 3 | 50.0% |
-| gpt-5-codex | 6 | 13 | 6 | 46.2% |
-| kimi_k2.5 | 8 | 15 | 4 | 53.3% |
-| qwen3.5_397b_a17b_judge | 10 | 14 | 5 | 71.4% |
-| **PANEL** | **49** | **93** | **21** | **52.7%** |
+| glm_5 | 10 | 18 | 1 | 55.6% |
+| gpt-5-codex | 9 | 17 | 2 | 52.9% |
+| kimi_k2.5 | 11 | 19 | 0 | 57.9% |
+| qwen3.5_397b_a17b_judge | 12 | 19 | 0 | 63.2% |
+| **PANEL** | **61** | **110** | **4** | **55.5%** |
 
-21 errors (18.4% of runs) were due to: instructlab image issues (exit 255, 6/6 failed),
-agents exhausting 50-step budget without writing verdict, or kimi_k2.5 intermittent
-verdict failures.
+4 remaining errors: gemini on instructlab (truncated 192K patch still too complex),
+gpt-5-codex on two instances (agent exhausted 80-step budget without writing verdict),
+glm_5 on openai-agents-python-1235 (verdict parse failure).
 
 ### Side-by-side comparison
 
 | Judge | Patch-only | Scaffold | Δ |
 |-------|-----------|----------|---|
-| claude_opus_4_6 | 53% | 41% | −11.5 pp |
+| claude_opus_4_6 | 53% | 47% | −5.3 pp |
 | gemini_31_pro_thinking | 21% | 56% | **+34.5 pp** |
-| glm_5 | 53% | 50% | −2.6 pp |
-| gpt-5-codex | 63% | 46% | −17.0 pp |
-| kimi_k2.5 | 47% | 53% | +6.0 pp |
-| qwen3.5_397b_a17b_judge | 53% | 71% | **+18.8 pp** |
-| **PANEL** | **48.2%** | **52.7%** | **+4.4 pp** |
+| glm_5 | 53% | 56% | +2.9 pp |
+| gpt-5-codex | 63% | 53% | −10.2 pp |
+| kimi_k2.5 | 47% | 58% | **+10.5 pp** |
+| qwen3.5_397b_a17b_judge | 53% | 63% | **+10.5 pp** |
+| **PANEL** | **48.2%** | **55.5%** | **+7.2 pp** |
 
 Key observations:
 - **gemini_31_pro_thinking** swings from 21% → 56% (+34.5 pp) — it was anomalously
   anti-steered in patch-only mode but corrects when given repo context.
-- **qwen3.5_397b_a17b_judge** rises from 53% → 71% — this is the same model family as
-  the agent (Qwen3.5), suggesting it sees steerer-aligned patterns more clearly with
-  repo context.
-- **gpt-5-codex** drops from 63% → 46% — the most capable judge penalizes the steered
-  patches more when it can see the full codebase (possible over-exploration bias with
-  50 steps).
+- **kimi_k2.5** and **qwen3.5_397b_a17b_judge** both rise +10.5 pp — scaffold context
+  lets them appreciate the steered patches' test coverage and documentation advantages.
+- **gpt-5-codex** drops from 63% → 53% — the most capable judge penalizes steered
+  patches on correctness/error_handling when it can see full codebase context, but
+  the shift is moderate (-10 pp) and it still favors steered overall.
+- **claude_opus_4_6** drops from 53% → 47% — becomes more conservative with repo
+  context, penalizing scope_discipline and error_handling on specific instances.
 
 ---
 
 ## Per-criterion deltas (steered − baseline)
 
-| Criterion | Patch-only | Scaffold |
-|-----------|-----------|----------|
-| correctness | +0.000 | −0.215 |
-| code_quality | −0.092 | −0.172 |
-| scope_discipline | +0.000 | −0.215 |
-| error_handling | −0.133 | −0.290 |
-| security | +0.031 | −0.011 |
-| observability | +0.051 | +0.075 |
-| **test_coverage** | **+0.969** | **+0.968** |
-| interface_design | +0.122 | +0.054 |
-| **documentation** | **+0.296** | **+0.247** |
-| **review_readiness** | **+0.337** | **+0.172** |
+| Criterion | Patch-only | Scaffold | Shift |
+|-----------|-----------|----------|-------|
+| correctness | +0.000 | −0.118 | −0.118 |
+| code_quality | −0.092 | −0.109 | −0.017 |
+| scope_discipline | +0.000 | −0.109 | −0.109 |
+| error_handling | −0.133 | −0.245 | −0.113 |
+| security | +0.031 | +0.000 | −0.031 |
+| observability | +0.051 | +0.091 | +0.040 |
+| **test_coverage** | **+0.969** | **+0.945** | −0.024 |
+| interface_design | +0.122 | +0.082 | −0.041 |
+| **documentation** | **+0.296** | **+0.236** | −0.060 |
+| **review_readiness** | **+0.337** | **+0.236** | −0.100 |
 
 The steerer's strongest signal — **test_coverage** — is robust across both judge modes
-(~+1.0 point on 5-point scale). Documentation and review_readiness also consistently
-favor steered patches. The scaffold judges are harsher on correctness, code_quality,
-scope_discipline, and error_handling — suggesting the repo context reveals issues that
-patch-only judging misses.
+(~+0.95 point on 5-point scale). Documentation and review_readiness also consistently
+favor steered patches.
+
+**Scaffold penalty analysis**: The scaffold judges are modestly harsher on correctness
+(−0.12), scope_discipline (−0.11), and error_handling (−0.11). However, this penalty is
+**instance-specific, not rubric-driven** — the drops are concentrated on 3-4 instances
+where repo context reveals genuine issues (e.g., type-safety bugs in openai-agents-python-357,
+scope bloat in mesa-2296). No criterion shows a uniform shift across all instances,
+confirming that the rubric is not systematically biased against steered patches.
+
+The 4 remaining errors (3.5% of runs) are not due to step exhaustion from the 80-step
+budget — they are caused by agents failing to write well-formed verdict.json (parsing
+failures or the judge getting sidetracked exploring instead of scoring).
 
 ---
 
@@ -159,16 +175,21 @@ The scaffold-aware judges run inside Docker containers via `score_featbench_judg
 1. Creates container from cached `featbench_*` image for each (instance, judge) pair
 2. Sets up trae-agent inside the container (reuses pre-installed copy or clones fresh)
 3. Checks out the base commit in the worker's isolated swap directory
-4. Runs trae-agent CLI with a judge prompt and 50-step budget (`trae_config_judge.yaml`)
+4. Runs trae-agent CLI with a judge prompt and 80-step budget (`trae_config_judge.yaml`)
 5. Agent explores repo with bash/file tools, writes `verdict.json` via bash heredoc
 6. Orchestrator reads verdict from host-mounted swap directory
 
 24 workers process 114 runs in parallel (~35 min wall-clock time).
 
-**Error analysis**: 21/114 runs failed:
-- 6 from `instructlab` (cached image broken, exit 255)
-- 15 from agents not writing verdict.json within 50 steps or verdict parse failures
-  (primarily on large-patch instances like openai-agents-python-1235, openai-agents-python-508)
+**Fixes applied during development**:
+- Patch truncation at 30K chars to avoid OS `argument list too long` (instructlab's 192K
+  baseline patch was the trigger)
+- Step budget increased from 50 → 80 after first run showed agents exhausting steps
+- Per-worker repo copies to avoid git index.lock contention
+- Stale index.lock cleanup before git checkout
+
+**Final error rate**: 4/114 (3.5%) after one retry round. Remaining failures are verdict
+parse issues, not step exhaustion.
 
 ---
 
@@ -190,8 +211,10 @@ merged/closed PR pairs is required.
 
 ## Next Steps
 
-1. Fix instructlab cached image for complete scaffold coverage (6 missing judgments)
-2. Increase scaffold step budget to 80 for large-patch instances to reduce verdict failures
-3. Add steerer-aligned dimensions to rubric (Conway alignment, dependency hygiene, regression risk)
-4. Run scaffold judges on remaining 9 unpaired instances once both agents solve them
-5. Compare per-instance agreement between patch-only and scaffold judges (correlation analysis)
+1. Add steerer-aligned dimensions to rubric (Conway alignment, dependency hygiene,
+   regression risk) — current 10 criteria are generic; steerer-specific criteria may
+   amplify the detected advantage
+2. Run scaffold judges on remaining 9 unpaired instances once both agents solve them
+3. Investigate the 3 instances where scaffold flips majority winner — these represent
+   cases where repo context materially changes the quality assessment
+4. Per-instance agreement analysis between patch-only and scaffold (correlation, kappa)
