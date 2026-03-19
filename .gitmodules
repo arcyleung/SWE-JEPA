@@ -1,0 +1,3 @@
+[submodule "logit-fusion"]
+	path = logit-fusion
+	url = https://github.com/PGCodeLLM/SWE-logit/
