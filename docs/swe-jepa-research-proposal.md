@@ -611,7 +611,7 @@ flowchart TB
 
 **Bootstrap training loop**:
 1. **Terminal reward pretraining**:
-   - train acceptance / refactor / reward heads on combined `prs_copy` + `prs_copy_closed`
+   - train acceptance / refactor / reward heads on combined `prs_copy` + `python_js_ts_rust_closed_prs`
    - use 4.7.3 to supply negative terminal outcomes and 4.7.2/5.1 features to supply Conway-style state channels
 2. **Pairwise preference calibration**:
    - use 4.7.1 paired runs to form `(attempt_a, attempt_b, preferred)` examples
@@ -758,6 +758,188 @@ models, and harder to debug when the reward is wrong.
 
 ---
 
+### Phase 6: Self-Supervised Latent Steerer (JEPA-Native Steering)
+
+**Goal**: Replace the hand-crafted 61-feature steerer from Phase 5 with a self-supervised
+latent steerer that learns its own quality representation directly from code embeddings and
+git history — no manually defined features, no merge/close labels for pre-training. This
+closes the loop between the JEPA representation (Phases 0–3) and the steering application
+(Phase 5), making the steerer a native consumer of the latent space rather than a parallel
+system that happens to target similar properties.
+
+#### Motivation: why the feature list is a ceiling
+
+The Phase 5.1 steerer works (+21.4 pp F2P, +7.2 pp scaffold judge advantage), but it
+depends on 61 hand-engineered features that are:
+
+1. **Incomplete by construction** — they encode what we *thought* to measure (try/catch,
+   blame authors, import patterns), not what the codebase actually signals about merge
+   readiness. Phase 0.3 showed PR churn is linearly decodable from frozen embeddings
+   (R²=0.76) — but so are properties we never thought to extract as features.
+
+2. **Language-fragile** — Phase 5.1.1 catalogued systematic confounds: `has_try_catch` is
+   structurally zero for Go, `has_pub_func` fires on 65% of Rust PRs. Each new language
+   requires manual auditing and feature extension.
+
+3. **Static** — the features are computed once per patch. They cannot capture the
+   *relationship* between the patch and its surrounding codebase structure, which is
+   exactly what JEPA representations encode.
+
+Phase 0.3 already proved that frozen hidden states contain richer information than any
+fixed feature list. The question is whether we can train a steering head on those
+representations without supervised merge labels.
+
+#### Rationale: structural surprise as a self-supervised reward
+
+The core insight is that **structural predictability from context is a proxy for
+architectural alignment**. A patch that does what the codebase "expects" — respects module
+boundaries, follows existing patterns, maintains test conventions — should be predictable
+from its surrounding context. A patch that fights the architecture should be surprising.
+
+This is the JEPA hypothesis applied to steering:
+- **Teacher**: encode the post-patch state of affected files (frozen, layer 18)
+- **Predictor**: from pre-patch context only (surrounding code, imports, module structure,
+  test patterns), predict what the teacher embedding of the patched code should look like
+- **Structural surprise** = `||z_predicted - z_actual||₂`
+
+Every commit in git history is a free training example. No labels needed. The predictor
+learns "given this repo state, what kind of change fits here?" and the teacher provides
+the target. Merged PRs should have lower structural surprise than closed PRs — but this
+falls out of the geometry; we don't need to tell the model.
+
+```
+Pre-patch context ──→ [Student predictor] ──→ z_predicted
+                                                  │
+                                            L2 distance = structural_surprise
+                                                  │
+Post-patch files  ──→ [Frozen teacher]    ──→ z_actual
+```
+
+#### Evidence chain from prior phases
+
+| Phase | Finding | Relevance to Phase 6 |
+|-------|---------|---------------------|
+| 0.3 | PR churn R²=0.76, side effects BAcc=0.97 from frozen embeddings | The embedding space has the right geometry for quality signals |
+| 1.1–3.0 | Student predicts body embeddings from signatures (Rank@1=19%) | The prediction task is learnable; context constrains implementation |
+| 4.3 | Teacher+student complementary for region localization | Frozen reps carry task-relevant structure beyond what any single head captures |
+| 5.1 | 61 hand-crafted features → +21.4 pp F2P, +7.2 pp judge advantage | The steering signal is real and actionable; features are proxies for latent structure |
+
+#### Experiment 6.1: Embedding-Based Steerer (Semi-Supervised Validation)
+
+**Goal**: Validate that frozen teacher embeddings carry at least as much steering signal as
+the 61 hand-crafted features, using the same merged/closed labels as Phase 5.1.
+
+This is the minimal bridge experiment: same supervision, different representation. If the
+embedding-based head matches or beats AUROC 0.71, it confirms the latent space subsumes the
+feature list.
+
+**Method**:
+1. For each PR in the training set (100k merged + closed from `prs_copy` + `python_js_ts_rust_closed_prs`):
+   - Run frozen Qwen2.5-Coder-3B (layer 18) on the patch diff text
+   - Mean-pool hidden states → `z_patch` (2048-dim)
+2. Train acceptance/refactor heads on `z_patch` (logistic regression, same CV as Phase 5.1)
+3. Compare AUROC/PR-AUC against the 61-feature baseline
+
+**Variant**: concatenate `z_patch` with a small context embedding `z_context` (mean-pool of
+the 500-token window surrounding each changed region) to test whether context adds signal
+beyond the patch itself.
+
+**Success criteria**:
+
+| Criterion | Target |
+|-----------|--------|
+| Embedding acceptance AUROC ≥ 61-feature AUROC (0.71 CV) | Match or exceed |
+| Embedding refactor AUROC ≥ 61-feature AUROC (0.59 CV) | Match or exceed |
+| `z_patch + z_context` > `z_patch` alone | Measurable improvement |
+
+#### Experiment 6.2: Contrastive Pre-Training on PR Outcomes
+
+**Goal**: Learn a "merge-readiness subspace" of the embedding without hand-crafted features,
+using merged/closed status as a weak contrastive signal.
+
+**Method**:
+1. Encode each patch with frozen teacher → `z_patch`
+2. Train a small projection head `g(z_patch) → R^d` (d=256) with InfoNCE:
+   - Positive pairs: patches from the same repo that were merged
+   - Negative pairs: closed patches from the same repo
+   - Hard negatives: closed patches that touched similar files to merged patches
+3. The projection head learns to separate merge-ready from merge-rejected in a compact space
+4. At inference: score a candidate patch by cosine similarity to the merged-patch centroid
+   for that repo
+
+**Why this is better than 6.1**: The contrastive objective forces the head to focus on the
+*discriminative* dimensions of the embedding — the ones that actually separate merged from
+closed — rather than relying on the linear probe to find them in a 2048-dim haystack.
+
+**Success criteria**:
+
+| Criterion | Target |
+|-----------|--------|
+| Contrastive head AUROC > logistic probe on raw embeddings (Exp 6.1) | +2 pp |
+| Repo-stratified generalization (held-out repos) | No degradation vs within-repo |
+| Projection captures interpretable dimensions (PCA on g(z)) | Yes (manual inspection) |
+
+#### Experiment 6.3: Structural Surprise — Fully Self-Supervised Steerer
+
+**Goal**: Train the steerer with zero merge/close labels. Use structural predictability
+from context as the sole training signal.
+
+**Method**:
+1. Build training set from git history (any repo, any commit — not limited to PRs):
+   - For each commit: extract pre-patch context (surrounding files, 2048-token window)
+     and post-patch state (modified files after the commit)
+   - Run frozen teacher on both → `z_context`, `z_post_patch`
+2. Train a predictor `f(z_context) → z_predicted` (same architecture as Phase 1.2
+   transformer encoder, ~45M params)
+3. Loss: SmoothL1(`z_predicted`, `z_post_patch`)
+4. After training, compute structural surprise for any candidate patch:
+   `surprise(patch) = ||f(z_context) - teacher(post_patch_state)||₂`
+5. Use `surprise` as the steering signal: high surprise → inject scope/test/boundary hints
+
+**Key design choices**:
+- Context window: 2048 tokens of surrounding code (imports, adjacent functions, module
+  docstrings, test file headers) — same context the Phase 1.2 student consumed
+- Teacher target: full-context body embedding (the Phase 3.0 trick that gave 19% Rank@1)
+- Training data: all commits in the 150-repo corpus (not just PRs), giving ~500k examples
+  vs 100k from `prs_copy` alone
+
+**Validation** (uses labels, but only for evaluation — not training):
+- Compute mean structural surprise for merged vs closed PRs
+- If merged PRs have significantly lower surprise, the self-supervised signal aligns
+  with merge outcomes without ever seeing them during training
+- Compare steering effectiveness: replace 61-feature steerer with surprise-based steerer
+  in FeatBench eval and measure F2P / judge panel scores
+
+**Success criteria**:
+
+| Criterion | Target |
+|-----------|--------|
+| Mean surprise(merged) < mean surprise(closed) | Significant (p < 0.01) |
+| Surprise-based steerer F2P ≥ 61-feature steerer F2P on FeatBench | Match or exceed |
+| Surprise-based judge panel win rate ≥ 61-feature judge panel | Match or exceed |
+| No merge/close labels used in training | Confirmed |
+| Generalizes to repos not in training set | Yes (held-out repo eval) |
+
+#### Phase 6 sequencing and dependencies
+
+```
+6.1 (embedding steerer, semi-supervised)
+ │   validates: embeddings ≥ hand-crafted features
+ │
+ ├──→ 6.2 (contrastive, weak labels)
+ │     validates: projection head finds discriminative subspace
+ │
+ └──→ 6.3 (structural surprise, fully self-supervised)
+       validates: no labels needed; prediction error = quality signal
+       depends on: Phase 1.2 predictor architecture, Phase 3.0 target trick
+```
+
+6.1 is a quick validation gate (~1 GPU-day). If it fails, the embedding space lacks
+steering signal and 6.2/6.3 are unlikely to succeed. If it passes, 6.2 and 6.3 can
+proceed in parallel.
+
+---
+
 ## Risks & Mitigations
 
 | Risk | Likelihood | Mitigation |
@@ -770,6 +952,9 @@ models, and harder to debug when the reward is wrong.
 | Organizational/churn signals not present in code text alone | Medium | Enrich training data with git metadata; use PR-level context not just file-level |
 | 4.7.2 trajectory history is too noisy for dense reward shaping | High | Use 4.7.2 only to warm-start `Phi(.)`; recalibrate on fresh 5.1 rollouts before enabling 5.2 |
 | Small steerer overfits one coder or prompt scaffold | Medium | Evaluate the same steerer against multiple frozen coder backbones and keep actions model-agnostic |
+| Embedding-based steerer (6.1) underperforms hand-crafted features | Medium | The 2048-dim space may be too isotropic for a linear head; mitigate with PCA/whitening or contrastive projection (6.2) |
+| Structural surprise (6.3) does not correlate with merge outcomes | Medium | If prediction error is dominated by cosmetic variation (naming, formatting), add invariance via code normalization or contrastive filtering |
+| Self-supervised training data (all commits) is noisier than curated PR data | Low | Filter to non-trivial commits (>5 lines changed, non-merge); the scale advantage (500k vs 100k) should compensate |
 
 ---
 
@@ -783,6 +968,7 @@ models, and harder to debug when the reward is wrong.
 | Phase 3: Retrieval validation | 4-16 GPU-days | 49.6K functions from 150 repos | 3-4 weeks |
 | Phase 4: Downstream validation | 2-6 GPU-days | followup-linked functions across 144 repos | 2-3 weeks |
 | Phase 5: Steerer RL + agentic eval | 4-12 GPU-days | 4.7.1 paired runs + 4.7.2 histories + 4.7.3 closed PRs | 3-5 weeks |
+| Phase 6: Self-supervised latent steerer | 2-8 GPU-days | 100k PRs (6.1/6.2) + 500k commits (6.3) from 150-repo corpus | 3-4 weeks |
 
 ---
 

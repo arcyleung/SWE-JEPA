@@ -695,7 +695,7 @@ Initial readout (2-node Slurm smoke, 41 PRs / 239 snapshots / 25 review-response
 - Post-review transitions were especially noisy; surviving visible PR commit history is likely an
   incomplete proxy when authors squash or force-push away earlier revisions.
 
-### Experiment 4.7.3 — Closed PR Corpus Ingestion (`prs_copy_closed`)
+### Experiment 4.7.3 — Closed PR Corpus Ingestion (`python_js_ts_rust_closed_prs`)
 
 #### Motivation
 
@@ -724,7 +724,7 @@ How much of the `prs_copy` schema can be:
 
 #### Target table
 
-Create `prs_copy_closed` with the same columns as `prs_copy` and upsert one row per closed PR.
+Create `python_js_ts_rust_closed_prs` with the same columns as `prs_copy` and upsert one row per closed PR.
 
 Schema compatibility target:
 - exact column names matching `prs_copy`
@@ -760,10 +760,10 @@ Expected null/unavailable in 4.7.3:
 
 #### Implementation plan
 
-1. `ingest_prs_copy_closed.py`
+1. `ingest_python_js_ts_rust_closed_prs.py`
    - normalize the unmerged JSONL corpus to `prs_copy` columns
    - optionally fetch missing patch / file / comment artifacts
-   - create `prs_copy_closed` if absent
+   - create `python_js_ts_rust_closed_prs` if absent
    - upsert rows idempotently on `(repo, pull_number)`
 
 2. `docs/phase4_7_3_closed_pr_ingestion.md`
@@ -775,16 +775,16 @@ Expected null/unavailable in 4.7.3:
 
 3. Re-run downstream patch-feature and steerer pipelines against:
    - `prs_copy` (merged)
-   - `prs_copy_closed` (closed)
+   - `python_js_ts_rust_closed_prs` (closed)
    - combined merged + closed dataset
 
 #### Success criteria
 
 | Criterion | Target |
 |-----------|--------|
-| Closed PR rows inserted into `prs_copy_closed` | >20k |
+| Closed PR rows inserted into `python_js_ts_rust_closed_prs` | >20k |
 | Direct + fetchable coverage for core modeling columns (`patch`, `file_patches`, `commits`, `comments`) | >95% |
-| Same downstream feature extractor can run on `prs_copy_closed` without schema fork | yes |
+| Same downstream feature extractor can run on `python_js_ts_rust_closed_prs` without schema fork | yes |
 | Acceptance head retrained on merged + closed PRs | enabled |
 
 ### Experiment 5.1 — RL on Steerer (Conway-Aware State Policy)
@@ -1056,3 +1056,175 @@ ensures bad terminal outcomes cannot be offset by high process scores.
   https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf
 - ThinkLogit: https://arxiv.org/abs/2510.09354 (paradigm-level connection: small
   guider's delta steers large model without retraining)
+
+---
+
+## Phase 6: Self-Supervised Latent Steerer — Implementation Plan
+
+### Status as of 2026-03-20
+
+Phase 5.1 validated that Conway-aware steering works (+21.4 pp F2P, +7.2 pp scaffold
+judge advantage). Phase 6 replaces the 61 hand-crafted features with self-supervised
+latent representations from the frozen teacher. See `swe-jepa-research-proposal.md`
+Phase 6 section for full rationale.
+
+### Experiment 6.1: Embedding-Based Steerer
+
+**Objective**: Confirm frozen teacher embeddings carry ≥ steering signal as hand-crafted features.
+
+#### Implementation steps
+
+1. **Extract patch embeddings** — `extract_patch_embeddings.py`
+   - Input: `prs_copy` + `python_js_ts_rust_closed_prs` (100k+ PRs with patch diffs)
+   - For each PR:
+     - Tokenize patch diff text with Qwen2.5-Coder-3B tokenizer
+     - Run frozen teacher (layer 18), mean-pool → `z_patch` (2048-dim)
+     - Optionally: tokenize 500-token surrounding context window, run teacher
+       → `z_context` (2048-dim)
+   - Output: `data/patch_embeddings_100k.npz` (z_patch, z_context, instance_ids)
+   - Batched inference on 8 GPUs, ~4h for 100k patches
+
+2. **Train acceptance/refactor heads** — `train_embedding_steerer.py`
+   - Load `patch_embeddings_100k.npz`
+   - Same train/val split as Phase 5.1 (GroupKFold by repo, 5 folds)
+   - Models:
+     - Logistic regression on `z_patch` (2048-dim)
+     - Logistic regression on `[z_patch; z_context]` (4096-dim)
+     - 2-layer MLP (2048 → 512 → 1) on `z_patch`
+   - Targets: `accepted` (merged=1, closed=0), `refactor_requested`
+   - Report: AUROC, PR-AUC per fold; compare to Phase 5.1 baselines (0.71 / 0.59)
+
+3. **Ablation: PCA whitening**
+   - Apply PCA to 256/512 dims before linear head (address potential isotropy issue)
+   - Compare AUROC with/without whitening
+
+4. **FeatBench steering eval** (if AUROC ≥ 0.71)
+   - Replace 61-feature extraction in `steered_trae_agent.py` with embedding extraction
+   - Run same 19-pair FeatBench eval with scaffold judges
+   - Compare F2P and judge panel scores to Phase 5.1
+
+#### Files to create/modify
+
+| File | Purpose |
+|------|---------|
+| `extract_patch_embeddings.py` | Batch extraction of z_patch, z_context from frozen teacher |
+| `train_embedding_steerer.py` | Train acceptance/refactor heads on embeddings |
+| `data/patch_embeddings_100k.npz` | Cached embeddings (output) |
+| `docs/phase6_1_embedding_steerer.md` | Results writeup |
+
+#### Dependencies
+
+- Frozen Qwen2.5-Coder-3B checkpoint (same as Phase 0–3)
+- `prs_copy` + `python_js_ts_rust_closed_prs` tables with patch diffs
+- Phase 5.1 feature baselines for comparison
+
+---
+
+### Experiment 6.2: Contrastive Projection
+
+**Objective**: Learn a compact merge-readiness subspace via contrastive learning on
+merged/closed pairs.
+
+#### Implementation steps
+
+1. **Build contrastive pairs** — `build_contrastive_pairs.py`
+   - For each repo with both merged and closed PRs:
+     - Positive pairs: (merged_patch_i, merged_patch_j) from same repo
+     - Negative pairs: (merged_patch_i, closed_patch_k) from same repo
+     - Hard negatives: closed patches touching same files as merged patches
+   - Output: `data/contrastive_pairs_100k.jsonl`
+
+2. **Train projection head** — `train_contrastive_steerer.py`
+   - Architecture: `z_patch (2048) → Linear(2048, 512) → GELU → Linear(512, 256)`
+   - Loss: InfoNCE with temperature τ=0.07
+   - Training: repo-stratified split, 50 epochs, lr=1e-4, batch=512
+   - Output: projection weights + per-fold AUROC on held-out repos
+
+3. **Evaluate**
+   - Score candidate patches by cosine to repo's merged-patch centroid in projection space
+   - Compare AUROC to Exp 6.1 logistic baseline
+   - Visualize t-SNE of projected embeddings colored by merged/closed
+
+#### Files to create
+
+| File | Purpose |
+|------|---------|
+| `build_contrastive_pairs.py` | Pair construction from prs_copy + python_js_ts_rust_closed_prs |
+| `train_contrastive_steerer.py` | InfoNCE projection head training |
+| `docs/phase6_2_contrastive_steerer.md` | Results |
+
+---
+
+### Experiment 6.3: Structural Surprise (Fully Self-Supervised)
+
+**Objective**: Train a predictor on git history with zero labels. Use prediction error as
+the steering signal.
+
+#### Implementation steps
+
+1. **Build commit-level training set** — `extract_commit_context_targets.py`
+   - For each non-trivial commit in the 150-repo corpus (>5 lines changed, non-merge):
+     - Extract pre-patch context: 2048-token window from surrounding files
+       (imports, adjacent functions, module docstrings, test headers)
+     - Extract post-patch state: modified files after commit
+     - Run frozen teacher on both → `z_context` (2048-dim), `z_post_patch` (2048-dim)
+   - Output: `data/commit_context_targets_500k.npz`
+   - Target: ~500k commit pairs from 150 repos
+
+2. **Train predictor** — `train_structural_predictor.py`
+   - Architecture: Phase 1.2 transformer encoder (~45M params)
+     - 6-layer transformer, 512 hidden, 8 heads over tokenized context
+     - 2-layer cross-attention predictor → `z_predicted` (2048-dim)
+   - Loss: SmoothL1(`z_predicted`, `z_post_patch`)
+   - Training: repo-stratified split, DDP on 8 GPUs
+   - Track: val loss, cosine similarity, structural surprise distribution
+
+3. **Validate against merge outcomes** (labels for eval only)
+   - Compute `surprise = ||z_predicted - z_actual||` for merged and closed PRs
+   - Statistical test: Mann-Whitney U on surprise(merged) vs surprise(closed)
+   - Plot surprise distribution by outcome
+
+4. **FeatBench steering integration**
+   - At agent inference time: run frozen teacher + predictor on candidate patch
+   - Compute structural surprise
+   - Map surprise to steering actions:
+     - Low surprise (< p25): submit
+     - Medium (p25–p75): light hints (test coverage, documentation)
+     - High (> p75): strong hints (scope tighten, module boundary, split patch)
+   - Run full FeatBench eval and compare to Phase 5.1
+
+5. **Generalization test**
+   - Hold out 20 repos entirely from training
+   - Verify surprise still separates merged/closed on held-out repos
+   - Verify FeatBench steering works for instances from held-out repos
+
+#### Files to create
+
+| File | Purpose |
+|------|---------|
+| `extract_commit_context_targets.py` | Build (context, post-patch) pairs from git history |
+| `train_structural_predictor.py` | Train JEPA predictor on commit pairs |
+| `compute_structural_surprise.py` | Score patches by prediction error |
+| `data/commit_context_targets_500k.npz` | Cached training data |
+| `docs/phase6_3_structural_surprise.md` | Results |
+
+#### Dependencies
+
+- Phase 1.2 transformer encoder architecture (reuse code from `train_student.py`)
+- Phase 3.0 target computation trick (full sig+body context for teacher targets)
+- 150-repo corpus with git history access
+- FeatBench eval infrastructure from Phase 5.1
+
+---
+
+### Phase 6 timeline
+
+| Experiment | Estimated effort | GPU-days | Gate |
+|-----------|-----------------|----------|------|
+| 6.1 Embedding steerer | 1 week | 1 | AUROC ≥ 0.71 to proceed |
+| 6.2 Contrastive projection | 1 week | 2 | AUROC > 6.1 baseline |
+| 6.3 Structural surprise | 2-3 weeks | 4-8 | surprise(merged) < surprise(closed) at p<0.01 |
+| 6.3 FeatBench eval | 1 week | 0 (inference) | F2P ≥ Phase 5.1 |
+
+Total: ~4-6 weeks, 7-11 GPU-days. 6.1 is the critical gate — if embeddings don't match
+the feature baseline, the premise fails and 6.2/6.3 should be deprioritized.

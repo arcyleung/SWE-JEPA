@@ -1,4 +1,4 @@
-# Experiment 4.7.3 — Closed PR Ingestion into prs_copy_closed
+# Experiment 4.7.3 — Closed PR Ingestion into python_js_ts_rust_closed_prs
 
 This report measures how much of the `prs_copy` schema can be recovered from the
 closed/unmerged JSONL corpus in `/shared_workspace_mfs/akki/scratch_mfs/arthur-task/enriched-all-unmerged`.

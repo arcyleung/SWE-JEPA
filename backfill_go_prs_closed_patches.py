@@ -14,7 +14,7 @@ from typing import Any
 import pg8000.native
 import yaml
 
-from ingest_prs_copy_closed import GitHubClient, _load_tokens
+from ingest_python_js_ts_rust_closed_prs import GitHubClient, _load_tokens
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PG_CONFIG_FILE = os.path.join(ROOT, "postgres_connection.yaml")

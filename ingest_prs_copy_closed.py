@@ -634,7 +634,7 @@ def _render_report(summary: dict[str, Any], out_path: str) -> None:
         return f"{100.0 * v:.1f}%"
 
     lines = [
-        "# Experiment 4.7.3 — Closed PR Ingestion into prs_copy_closed",
+        "# Experiment 4.7.3 — Closed PR Ingestion into python_js_ts_rust_closed_prs",
         "",
         "This report measures how much of the `prs_copy` schema can be recovered from the",
         "closed/unmerged JSONL corpus in `/shared_workspace_mfs/akki/scratch_mfs/arthur-task/enriched-all-unmerged`.",
@@ -681,7 +681,7 @@ def _render_report(summary: dict[str, Any], out_path: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source-dir", default=SOURCE_DIR)
-    ap.add_argument("--table", default="prs_copy_closed")
+    ap.add_argument("--table", default="python_js_ts_rust_closed_prs")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--fetch-missing", action="store_true")
