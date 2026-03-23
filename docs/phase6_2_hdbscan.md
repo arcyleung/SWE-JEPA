@@ -73,6 +73,44 @@ cochange_cross_module_ratio, interface_stress
 
 ---
 
+## 2b. Function-Level Followup Clusters v2 (3,338 PRs, 20 groups)
+
+**Source:** `data/phase6_2/function_followup_clusters/super_clusters.json`
+**Embeddings:** Qwen2.5-Coder-3B layer-18 patch embeddings (2048-dim) from phase6_1
+**Pipeline:** UMAP(2048→15, cosine) → KMeans(k=20)
+**Profiling:** 121 features (8 followup aggregates from postgres + 113 Conway patch features)
+**Join:** 3,338 PRs with both patch embeddings and function-level followup data
+
+Compared to v1 (6,651 anchors from `followup_sigs.jsonl` with only 13 org metrics),
+v2 uses patch embeddings for geometry and the full Conway feature set for profiling,
+giving much richer cluster labels.
+
+### Key Groups
+
+| Super | n | Bugfix% | Acc% | Risk | Label | Steering implication |
+|-------|------|---------|------|------|-------|---------------------|
+| 13 | 7 | **100** | **0.0** | HIGH | n_docs↑ / n_maint↑ / n_total↑ | Extreme churn hotspot — all rejected, all get bugfixes |
+| 14 | 210 | **66.2** | 87.1 | HIGH | n_bugfix↑ / n_functions↑ | Many functions with bugfix followups — test heavily |
+| 2 | 160 | **64.4** | 88.7 | HIGH | max_overlap↑ / n_functions↑ | High-overlap followups — code gets revisited |
+| 7 | 47 | **14.9** | 95.7 | LOW | has_bugfix↓ / max_overlap↓ | Safe isolated code — rarely needs fixes |
+| 15 | 56 | **25.0** | 78.6 | LOW | dependency_change↑ / dep_file↑ | Dependency changes — low bugfix risk |
+| 3 | 119 | **39.5** | 92.4 | LOW | max_overlap↓ / has_bugfix↓ | Low-overlap, self-contained code |
+| 12 | 525 | 50.3 | 86.5 | MED | try_catch↑ / blame_top_author↑ | Error-handling code owned by one author |
+| 19 | 177 | 59.9 | **73.4** | MED | n_docs↑ / n_functions↑ / n_total↑ | High-churn with many functions — lowest acceptance |
+
+### Observations
+
+- Global bugfix rate: 51.0%, acceptance rate: 87.1%
+- **Bugfix spread: 14.9% – 100% (Δ=85.1pp)** — much better than v1 (Δ=61.3pp)
+- 7 HIGH-risk clusters, 4 LOW-risk clusters
+- Conway features (try_catch, dependency_change, blame_top_author) add structural
+  signal on top of the followup counts
+- Key pattern: **more distinct functions touched + higher overlap fractions → more bugfixes**
+- Acceptance and bugfix risk are partially independent — Super 19 has low acceptance
+  (73.4%) but only medium bugfix risk (59.9%)
+
+---
+
 ## 3. Steering Strategy
 
 The steerer can combine both signals:
@@ -98,13 +136,18 @@ The steerer can combine both signals:
 
 ## 4. Coverage Gap: Function Followups
 
-Current followup data covers only **148/5,927 repos** (2.5%) and **46k function-level
-rows**. The full `prs_copy` table has 152k PRs across 5,926 repos with cached clones
-on disk. Both extraction scripts already support `--num-shards`/`--shard-index` for
-parallel execution.
+After Slurm-parallel extraction (22 shards × 18 nodes) + backfilling unified diffs
+for bare-string repos:
 
-See `experiment_6/run_followup_extraction_slurm.sh` for the Slurm job array to
-scale extraction to all repos.
+| Table | Rows | Distinct repos | Change |
+|-------|------|---------------|--------|
+| followups_file | 2,363,517 | 3,692 | 18× repos (from 202) |
+| followups_function | 72,341+ | 148 | +56% rows (from 46k) |
+
+File-level coverage expanded massively via `backfill_file_patches.py` which extracted
+unified diffs from cached repo clones for ~1,400 PRs that previously only had
+bare-string filenames. Function-level is bottlenecked by repos needing fuse-overlayfs
++ tree-sitter AST parsing.
 
 ---
 

@@ -1,6 +1,6 @@
 # SWE-JEPA Working Plan
 
-## Status as of 2026-02-25
+## Status as of 2026-03-23
 
 ### Completed experiments
 
@@ -16,6 +16,11 @@
 | 2.1 | Hard negative mining | Null result; plateau is representation ceiling not neg quality |
 | 2.2 | Token-level body pred | Rank@10=4.20% val; gradient conflict slows convergence |
 | 3.0 | Qwen3-8B-base teacher | **Rank@1=19.11%, Rank@10=47.52% val** — 17× over best 3B result |
+| 5.1 | FeatBench Conway steerer | +21.4pp F2P, +7.2pp scaffold judge advantage |
+| 6.1 | Embedding steerer | Frozen layer-18 embeddings: acceptance AUROC 0.91 (+20pp), refactor 0.76 (+17pp) |
+| 6.2 | Multi-axis + HDBSCAN | Contrastive head overfits (negative); HDBSCAN 20 super-clusters with 113 features; bugfix followup clusters Δ=85pp |
+| 6.2b | Followup extraction at scale | followups_file 720k→2.4M (3,692 repos); followups_function 46k→72k; backfilled 1,391 PR diffs |
+| 6.2c | Combined steerer | 121-feature model (113 Conway + 8 followup) + cluster hints; acceptance AUROC 0.897 |
 
 ### Key insight from 3.0
 The breakthrough came from computing body targets with full sig+body context (not body-only),
