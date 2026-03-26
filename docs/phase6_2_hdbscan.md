@@ -111,7 +111,110 @@ giving much richer cluster labels.
 
 ---
 
-## 3. Steering Strategy
+## 3. Judge Panels
+
+We evaluated the baseline agent, the earlier v1 steerer, and the phase 6.2
+HDBSCAN-informed v3 steerer with two judge modes:
+
+1. **Patch-only judges**: the judge sees the task plus the two diffs and scores
+   which patch is stronger.
+2. **In-scaffold judges**: the judge runs inside the repo with trae-agent tools,
+   can inspect files and run shell commands, then writes a verdict.
+
+### Panel Composition
+
+- **v1 panel (2026-03-17)**: 6 judges
+  (`claude-opus-4-6`, `gemini-31-pro-thinking`, `glm-5`, `gpt-5-codex`,
+  `kimi-k2.5`, `qwen3.5-397b-a17b`)
+- **v3 panel (2026-03-25 / final reruns 2026-03-26)**: 9 judges from
+  `run_judge_panel.py DEFAULT_PANEL`
+  (`gpt-5.3-codex`, `gpt-5.4`, `glm-5`, `claude-opus-4-6`, `kimi-k2.5`,
+  `qwen3.5-397b-a17b`, `MiniMax-M2.7`,
+  `qwen3-coder-480b-a35b-instruct`, `deepseek-v3.2-251201`)
+
+### Artefacts
+
+- v1 patch-only: `eval/FeatBench/docker_agent/eval_runs/2026-03-17_full_ab/judge_panel/`
+- v1 in-scaffold: `eval/FeatBench/docker_agent/eval_runs/2026-03-17_full_ab/judge_panel_scaffold/`
+- v3 patch-only: `eval/FeatBench/docker_agent/eval_runs/2026-03-25_phase6_2/judge_panel_v3/`
+- v3 in-scaffold: `eval/FeatBench/docker_agent/eval_runs/2026-03-25_phase6_2/judge_panel_v3_scaffold_clean/`
+
+For v3 patch-only, the raw directory contains retries, so the panel rate below uses
+the latest verdict for each `(judge, iid)` among the intended 9 judges. For v3
+in-scaffold, the final score is the last cleaned rerun: **279 steered wins out of
+469 valid judgments (59.5%)**, with the remaining failures all `no_verdict`
+scaffold timeouts rather than provider rate-limit errors.
+
+---
+
+## 4. Evaluation
+
+On raw agent pass/fail, the earlier v1 steerer improved more strongly than v3:
+on the paired tasks, v1 moved F2P from 16/19 to 18/19, while v3 moved F2P from
+36/53 to 37/53. The more important result here is the judge preference trend:
+the HDBSCAN-informed v3 steerer wins both judge modes, and its strongest lift
+appears in the in-scaffold setting where judges can inspect repository context.
+
+For consistency, the table below reports **valid-judgment win rates** for the
+steered arm and its matched baseline. This matters for the older v1 patch-only
+run: the phase 5.1 writeup reported `55/114 = 48.2%` over scheduled comparisons,
+while the underlying valid-only panel rate is `55/98 = 56.1%`, which is the
+apples-to-apples number used here.
+
+| Condition | Judge mode | Steered patch win rate vs. baseline patch | Valid | Errors | Notes |
+|-----------|------------|-------------------------------------------|-------|--------|-------|
+| v1-steered vs baseline | patch-only | 56.1% | 98 | 16 | 55 steered wins on the 19 paired v1 tasks |
+| v1-steered vs baseline | in-scaffold | 55.5% | 110 | 4 | 61 steered wins; scaffold judges are slightly less favorable than patch-only on v1 |
+| v3-steered vs baseline | patch-only | 57.5% | 473 | 4 | 272 steered wins after deduping retries to latest `(judge, iid)` |
+| v3-steered vs baseline | in-scaffold | 59.5% | 469 | 8 | **Final phase 6.2 score**: 279 steered wins; remaining errors are scaffold timeouts |
+
+### Per-judge breakdown
+
+The table below shows steered wins as `wins / valid (rate, errors)` for each
+judge model. Because the judge rosters changed between v1 and v3, only the shared
+models are directly comparable across both experiments.
+
+| Judge model | v1 patch-only | v1 in-scaffold | v3 patch-only | v3 in-scaffold |
+|-------------|---------------|----------------|---------------|----------------|
+| claude-opus-4-6 | 10/19 (52.6%, 0 err) | 9/19 (47.4%, 0 err) | 25/52 (48.1%, 1 err) | 27/47 (57.4%, 6 err) |
+| glm-5 | 10/19 (52.6%, 0 err) | 10/18 (55.6%, 1 err) | 29/53 (54.7%, 0 err) | 32/53 (60.4%, 0 err) |
+| kimi-k2.5 | 9/17 (52.9%, 2 err) | 11/19 (57.9%, 0 err) | 31/53 (58.5%, 0 err) | 34/53 (64.2%, 0 err) |
+| qwen3.5-397b-a17b | 10/19 (52.6%, 0 err) | 12/19 (63.2%, 0 err) | 34/53 (64.2%, 0 err) | 30/53 (56.6%, 0 err) |
+| gpt-5-codex | 12/19 (63.2%, 0 err) | 9/17 (52.9%, 2 err) | - | - |
+| gemini-31-pro-thinking | 4/5 (80.0%, 14 err) | 10/18 (55.6%, 1 err) | - | - |
+| gpt-5.3-codex | - | - | 32/53 (60.4%, 0 err) | 27/53 (50.9%, 0 err) |
+| gpt-5.4 | - | - | 32/53 (60.4%, 0 err) | 28/53 (52.8%, 0 err) |
+| MiniMax-M2.7 | - | - | 31/51 (60.8%, 2 err) | 36/53 (67.9%, 0 err) |
+| qwen3-coder-480b-a35b-instruct | - | - | 31/53 (58.5%, 0 err) | 30/53 (56.6%, 0 err) |
+| deepseek-v3.2-251201 | - | - | 27/52 (51.9%, 1 err) | 35/51 (68.6%, 2 err) |
+| **PANEL** | **55/98 (56.1%, 16 err)** | **61/110 (55.5%, 4 err)** | **272/473 (57.5%, 4 err)** | **279/469 (59.5%, 8 err)** |
+
+Shared-model pattern:
+
+- `glm-5` and `kimi-k2.5` are consistently pro-steered and become even more
+  favorable in the v3 in-scaffold panel.
+- `claude-opus-4-6` is relatively conservative in patch-only mode but still ends
+  up net pro-steered in the final v3 scaffold run despite 6 unresolved timeouts.
+- `qwen3.5-397b-a17b` strongly liked v1 scaffold and v3 patch-only, but was more
+  balanced in the final v3 scaffold run.
+- The strongest new v3 scaffold supporters are `MiniMax-M2.7` (67.9%) and
+  `deepseek-v3.2-251201` (68.6%).
+
+### Takeaways
+
+- v3 beats v1 on both judge modes: patch-only improves from 56.1% to 57.5%, and
+  in-scaffold improves from 55.5% to 59.5%.
+- The biggest gain is in the repo-aware setting, which is the more meaningful
+  evaluation for this experiment because the steerer is meant to improve patch
+  quality, test coverage, and review readiness in full repository context.
+- The final unresolved v3 scaffold failures are concentrated in a small set of
+  Claude/DeepSeek runs on DSPy, Mesa, and Conan instances. They are execution
+  timeouts (`exit=124` / `no_verdict`), not evidence that the endpoint or
+  `model_id` wiring was incorrect.
+
+---
+
+## 5. Steering Strategy
 
 The steerer can combine both signals:
 
@@ -134,7 +237,7 @@ The steerer can combine both signals:
 
 ---
 
-## 4. Coverage Gap: Function Followups
+## 6. Coverage Gap: Function Followups
 
 After Slurm-parallel extraction (22 shards × 18 nodes) + backfilling unified diffs
 for bare-string repos:
@@ -151,7 +254,7 @@ bare-string filenames. Function-level is bottlenecked by repos needing fuse-over
 
 ---
 
-## 5. Contrastive Projection Head (Stage 1) — Negative Result
+## 7. Contrastive Projection Head (Stage 1) — Negative Result
 
 The InfoNCE contrastive projection (2048→256) **did not improve** over raw embeddings:
 
