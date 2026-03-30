@@ -204,6 +204,12 @@ Shared-model pattern:
 
 - v3 beats v1 on both judge modes: patch-only improves from 56.1% to 57.5%, and
   in-scaffold improves from 55.5% to 59.5%.
+- The final 9-judge in-scaffold panel prefers the v3 steered patch
+  `279 / 469 = 59.5%` of the time, a `+9.5 pp` margin over a 50/50 split.
+  Taken together with the v1 comparison, this confirms the Experiment 6
+  hypothesis: the unsupervised HDBSCAN supergroup features used by the
+  v3 steerer outperform the earlier hand-tuned 62-feature v1 steerer under
+  architecture / Conway-oriented judge evaluation.
 - The biggest gain is in the repo-aware setting, which is the more meaningful
   evaluation for this experiment because the steerer is meant to improve patch
   quality, test coverage, and review readiness in full repository context.

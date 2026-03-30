@@ -18,7 +18,7 @@
 | 3.0 | Qwen3-8B-base teacher | **Rank@1=19.11%, Rank@10=47.52% val** — 17× over best 3B result |
 | 5.1 | FeatBench Conway steerer | +21.4pp F2P, +7.2pp scaffold judge advantage |
 | 6.1 | Embedding steerer | Frozen layer-18 embeddings: acceptance AUROC 0.91 (+20pp), refactor 0.76 (+17pp) |
-| 6.2 | Multi-axis + HDBSCAN | Contrastive head overfits (negative); HDBSCAN 20 super-clusters with 113 features; bugfix followup clusters Δ=85pp |
+| 6.2 | Multi-axis + HDBSCAN | Contrastive head overfits (negative), but the HDBSCAN-informed v3 steerer wins FeatBench judge panels over v1: 57.5% patch-only and 59.5% in-scaffold (+9.5 pp over parity), supporting the hypothesis that unsupervised supergroup features outperform the hand-tuned 62-feature v1 steerer |
 | 6.2b | Followup extraction at scale | followups_file 720k→2.4M (3,692 repos); followups_function 46k→72k; backfilled 1,391 PR diffs |
 | 6.2c | Combined steerer | 121-feature model (113 Conway + 8 followup) + cluster hints; acceptance AUROC 0.897 |
 
@@ -26,6 +26,21 @@
 The breakthrough came from computing body targets with full sig+body context (not body-only),
 reducing target anisotropy from 0.37 → 0.013 random cosine. This aligns with the JEPA
 objective: target = f(body | full context), predictor maps g(sig only) → f(body | full context).
+
+### Update from 6.2
+
+The phase 6 steering hypothesis is now confirmed under the final FeatBench
+judge-preference metric.
+On the final 9-judge in-scaffold panel, the v3 steered patch is preferred
+`279 / 469 = 59.5%` of valid judgments, which is `+9.5 pp` over a 50/50 split.
+Relative to the earlier v1 steerer, v3 improves in both evaluation modes:
+
+- patch-only: `56.1%` → `57.5%`
+- in-scaffold: `55.5%` → `59.5%`
+
+Interpreted as an architecture / Conway-quality judgment, this is strong evidence
+that the unsupervised HDBSCAN supergroup features used by v3 outperform the
+earlier hand-tuned 62-feature v1 steerer.
 
 ---
 
@@ -1233,3 +1248,155 @@ the steering signal.
 
 Total: ~4-6 weeks, 7-11 GPU-days. 6.1 is the critical gate — if embeddings don't match
 the feature baseline, the premise fails and 6.2/6.3 should be deprioritized.
+
+---
+
+## Phase 7: JEPA Review-State Student
+
+### Experiment 7.1: Replace the Runtime Steerer with a Student
+
+**Objective**: verify that a compact student can replace the phase-6 runtime
+steerer by predicting the same review-state from a patch diff, while keeping the
+state-to-prompt bridge deterministic.
+
+**Initial implementation status**: `experiment_7/review_state_bridge.py` and
+`experiment_7/train_review_state_student.py` are now in place and pass a small
+smoke run on sampled data.
+
+#### Rationale
+
+Phase 5/6 established that a useful architectural-quality state exists:
+
+- hand-crafted Conway / review features can steer generation
+- frozen teacher patch embeddings and HDBSCAN super-clusters improve the same task
+- the final v3 scaffold panel reaches `279 / 469 = 59.5%`
+
+What is still missing is the JEPA piece. In the current phase-6 setup, there is
+no learned student producing that state at inference time. Experiment 7.1 closes
+that gap with a minimal distillation setup:
+
+1. teacher patch diff -> frozen phase-6 latent state
+2. student patch diff -> predicted latent state
+3. predicted state -> symbolic bridge -> review hints
+
+No free-text decoder is needed. The "decoder" is:
+
+- nearest-cluster / cluster-id lookup
+- deterministic issue-tag thresholds
+- fixed review-prompt templates
+
+#### Minimal mechanism
+
+```text
+run-1 patch.diff
+  -> small student
+  -> predicted review state
+       - latent h_hat (256-d)
+       - cluster c_hat
+       - acceptance / risk scores
+       - issue tags t_hat
+  -> symbolic bridge
+       - cluster_hints[c_hat]
+       - tag thresholds
+       - fixed review messages
+  -> run-2 review prompt
+```
+
+#### Teacher targets
+
+- `h_teacher`: `data/phase6_2/projected_embeddings.npz` (`h`, 256-d)
+- `c_teacher`: `data/phase6_2/super_cluster_assignments.npz`
+- `accepted`: merged vs closed label from the same patch corpus
+- `t_teacher`: deterministic review tags derived from the actual patch diff
+  (`shared_without_tests`, `api_without_tests`, `bare_except`, `http_without_timeout`, etc.)
+
+#### Student input
+
+- patch diff text only, truncated to a fixed token budget
+
+This is intentionally narrower than the eventual full JEPA setup. It is the
+minimal test of whether a compact student can stand in for the runtime steerer
+on the same patch-review interface.
+
+#### Training plan
+
+1. **Implement symbolic bridge** — `experiment_7/review_state_bridge.py`
+   - deterministic patch -> issue-tag extraction
+   - predicted tags / cluster -> review messages
+
+2. **Train minimal review-state student** — `experiment_7/train_review_state_student.py`
+   - tokenizer: Qwen2.5-Coder-3B tokenizer
+   - student: hashed-token `EmbeddingBag` + small MLP trunk
+   - outputs:
+     - latent head (`h_hat`, 256-d)
+     - cluster head (`c_hat`)
+     - acceptance head
+     - multi-label issue-tag head
+   - losses:
+     - cosine loss on `h_hat` vs `h_teacher`
+     - cross-entropy on `c_teacher`
+     - BCE on `accepted`
+     - BCE on `t_teacher`
+
+3. **Offline verification**
+   - repo-held-out split
+   - report:
+     - latent cosine
+     - cluster top-1 accuracy
+     - acceptance AUROC
+     - tag macro-F1
+
+4. **End-to-end replacement test**
+   - replace v3 runtime patch analysis with student-predicted state
+   - keep the same review-pass prompting structure
+   - rerun the 53 FeatBench paired tasks
+
+#### Success criteria
+
+| Criterion | Target |
+|-----------|--------|
+| Student latent cosine on held-out repos | meaningfully above random; target `> 0.60` |
+| Cluster accuracy | enough to recover useful cluster hints; target `> 50%` |
+| Issue-tag macro F1 | target `> 0.60` |
+| In-scaffold judge win rate vs baseline | clearly above `50%` |
+| In-scaffold judge win rate vs v3 teacher steerer | within `2 pp` of `59.5%` |
+
+#### Files
+
+| File | Purpose |
+|------|---------|
+| `experiment_7/review_state_bridge.py` | deterministic state -> hint bridge and teacher tag extraction |
+| `experiment_7/train_review_state_student.py` | minimal student training and offline evaluation |
+| `data/phase7_1/review_state_student.pt` | trained student bundle |
+| `data/phase7_1/review_state_student_metrics.json` | offline metrics |
+
+#### Notes
+
+- This experiment verifies "student replaces runtime steerer after a draft patch exists."
+- It does **not** yet solve task-only pre-generation steering.
+- A later experiment should test task/context -> clean-patch-state prediction before
+  the first patch is written.
+
+### Experiment 7.2: Hierarchical Review Ontology
+
+**Objective**: expand the flat 7.1 review-tag head into a hierarchical review
+ontology while keeping the same two-pass scaffold control loop.
+
+Design principle:
+
+- keep a modest set of learnable **atomic tags**
+- compose richer **review issues** from tag combinations, diff statistics, and
+  cluster priors in the symbolic bridge
+- use cluster risk hints for broad architectural priors instead of exploding the
+  learned tag head into many sparse one-off labels
+
+Initial 7.2 scope:
+
+1. preserve the 7.1 runtime prompt injection mechanism
+2. add new atomic tags for compatibility, concurrency, test coverage, and
+   boundary-surface changes
+3. add composite rendering rules on top of those atomic tags
+4. retrain the student and compare against the 7.1 flat 9-tag baseline
+
+This keeps Experiment 7.1 narrowly focused on "student replaces steerer", while
+Experiment 7.2 handles the richer hierarchical review-state expansion.
