@@ -22,6 +22,19 @@ The key point is that **no learned text decoder is required**. The student only
 predicts state. A deterministic bridge turns that state into the same kind of
 promptable review issues already used by the v3 steerer.
 
+## Operational Note
+
+Before starting a FeatBench run, start the stale-container reaper in the
+background:
+
+```bash
+bash /shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/scripts/kill_stale_containers.sh
+```
+
+This script removes FeatBench worker containers with `_w` in the name once they
+have been running for over `1.5` hours. It helps clear long-stuck Conan-style
+workers so the eval loop can continue making progress without manual cleanup.
+
 ---
 
 ## Reference Design: Phase 6.2 v3

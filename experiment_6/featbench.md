@@ -16,3 +16,17 @@
   python -m docker_agent.runner.parallel_eval \
       --agents qwen35-steered --workers 12 --skip-done \
       --results-file docker_agent/evaluation_results_steered_v1.json
+
+
+# Baseline
+cd /shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent
+
+ mkdir -p /shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-03-31_qwen27_baseline
+
+DOCKER_AGENT_SWAP_ROOT=/tmp/20260331_qwen27_baseline_full156_swap \
+  python3 runner/parallel_eval.py \
+    --agents qwen27-baseline \
+    --workers 8 \
+    --results-file /shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-03-31_qwen27_baseline/
+  evaluation_results_qwen27_baseline.json \
+  2>&1 | tee /shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-03-31_qwen27_baseline/parallel_eval_qwen27_baseline.log
