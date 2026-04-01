@@ -443,3 +443,60 @@ That keeps Experiment 7.1 faithful to the minimal claim:
 
 > the trained `h`-full student can replace the v3 steerer’s patch-review state
 > estimator and drive the same in-scaffold prompt injection loop.
+
+---
+
+## Appendix: Steering Trigger Discussion
+
+The phase 7.1 steerer emits a **limited fixed tag set** of 9 review tags:
+
+- `patch_too_large`
+- `shared_without_tests`
+- `api_without_tests`
+- `eval_exec`
+- `sql_fstring`
+- `hardcoded_credential`
+- `bare_except`
+- `except_pass`
+- `http_without_timeout`
+
+However, runtime steering is **not tag-only**. The actual review trigger is a
+combination of:
+
+- thresholded tag messages
+- cluster-risk hints from the predicted HDBSCAN super-cluster
+- the acceptance head `accept_prob`
+
+The host-side control flow in
+`eval/FeatBench/docker_agent/agents/steered_trae_agent_phase7_1_h_full.py`
+only injects a second-pass review prompt when the rendered `issues` list is
+non-empty. If no issues are rendered, the first-pass patch is kept as-is.
+
+Empirical trigger counts from the qwen35 phase 7.1 FeatBench run:
+
+- main 156-instance run:
+  - `128` trajectories reached review-state inference
+  - `79` launched a review pass
+  - `49` logged `Review: no issues found, keeping patch as-is`
+- targeted rerun:
+  - `14` trajectories reached review-state inference
+  - `6` launched a review pass
+  - `8` logged `Review: no issues found, keeping patch as-is`
+
+Combined:
+
+- `142` trajectories reached review-state inference
+- `85` launched a review pass
+- `57` kept the first-pass patch with no steering prompt
+
+So the right interpretation is:
+
+- yes, the symbolic output vocabulary is narrow
+- no, it is not true that *most* trajectories had no steering input
+- the run was close to evenly split, with review prompting on about `60%` of
+  trajectories that reached the review-state stage
+
+The more important limitation is not only the small tag set; it is that many
+second-pass prompts were driven by coarse cluster-risk messages rather than
+high-fidelity contract or architecture diagnostics. That likely contributed to
+the weaker end-to-end quality relative to the phase 6.2 v3 steerer.
