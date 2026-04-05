@@ -23,6 +23,7 @@ PROJECTED="${PROJECTED:-}"
 SUPER_CLUSTERS="${SUPER_CLUSTERS:-}"
 PG_CONFIG="${PG_CONFIG:-}"
 TOKENIZER_PATH="${TOKENIZER_PATH:-}"
+PATCH_SQLITE="${PATCH_SQLITE:-}"
 
 RUN_DIR="${PROJECT_ROOT}/data/${RUN_TAG}"
 SHARD_DIR="${RUN_DIR}/shards"
@@ -43,6 +44,7 @@ echo "  PROJECTED=${PROJECTED:-<default>}"
 echo "  SUPER_CLUSTERS=${SUPER_CLUSTERS:-<default>}"
 echo "  PG_CONFIG=${PG_CONFIG:-<default>}"
 echo "  TOKENIZER_PATH=${TOKENIZER_PATH:-<default>}"
+echo "  PATCH_SQLITE=${PATCH_SQLITE:-<none>}"
 
 srun -N "$NODES" -p "$PARTITION" -n "$NODES" --ntasks-per-node=1 \
      --input=none \
@@ -92,6 +94,9 @@ srun -N "$NODES" -p "$PARTITION" -n "$NODES" --ntasks-per-node=1 \
   fi
   if [[ -n "'"${TOKENIZER_PATH}"'" ]]; then
     args+=(--tokenizer-path "'"${TOKENIZER_PATH}"'")
+  fi
+  if [[ -n "'"${PATCH_SQLITE}"'" ]]; then
+    args+=(--patch-sqlite "'"${PATCH_SQLITE}"'")
   fi
   python experiment_7/preprocess_review_state_shard.py "${args[@]}" > "$out_log" 2>&1
 '

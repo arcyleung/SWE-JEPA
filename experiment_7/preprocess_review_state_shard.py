@@ -29,6 +29,7 @@ import pg8000.native
 import yaml
 from transformers import AutoTokenizer
 
+from patch_store import fetch_remote_patch_chunk, fetch_sqlite_patch_chunk, open_patch_sqlite
 from review_state_bridge import TAG_NAMES, detect_review_issue_flags
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -58,32 +59,18 @@ def _load_db(cfg_path: str) -> pg8000.native.Connection:
     )
 
 
-def _fetch_patch_chunk(
-    conn: pg8000.native.Connection,
-    instance_ids: list[str],
-) -> dict[str, str]:
-    if not instance_ids:
-        return {}
-    quoted = ", ".join("'" + iid.replace("'", "''") + "'" for iid in instance_ids)
-    rows = conn.run(
-        f"""
-        SELECT instance_id_key, patch
-        FROM (
-            SELECT instance_id AS instance_id_key, patch
-            FROM prs_copy
-            WHERE patch IS NOT NULL
-            UNION ALL
-            SELECT
-                REPLACE(repo, '/', '__') || '__' || pull_number AS instance_id_key,
-                patch
-            FROM python_js_ts_rust_closed_prs
-            WHERE patch IS NOT NULL
-        ) AS combined
-        WHERE instance_id_key IN ({quoted})
-        """
-    )
-    return {str(instance_id): str(patch) for instance_id, patch in rows}
+def _sql_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
+
+def _parse_closed_pr_key(instance_id: str, repo: str) -> int | None:
+    prefix = repo.replace("/", "__") + "__"
+    if not instance_id.startswith(prefix):
+        return None
+    suffix = instance_id[len(prefix):]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
 
 def _load_teacher_metadata(projected_path: str, super_clusters_path: str) -> dict[str, Any]:
     projected = np.load(projected_path, allow_pickle=True)
@@ -160,6 +147,7 @@ def _extract_tag_rows(
 def _preprocess_rows(
     rows: list[dict[str, Any]],
     cfg_path: str,
+    patch_sqlite: str,
     tokenizer: Any,
     max_tokens: int,
     hash_vocab_size: int,
@@ -185,7 +173,8 @@ def _preprocess_rows(
     n_missing_patch = 0
     n_joined = 0
 
-    conn = _load_db(cfg_path)
+    conn = _load_db(cfg_path) if not patch_sqlite else None
+    sqlite_conn = open_patch_sqlite(patch_sqlite) if patch_sqlite else None
     tag_pool: ProcessPoolExecutor | None = None
     if preprocess_workers > 1:
         ctx = mp.get_context("spawn")
@@ -201,10 +190,14 @@ def _preprocess_rows(
                 flush=True,
             )
             fetch_t0 = time.time()
-            patches_by_iid = _fetch_patch_chunk(
-                conn,
-                [row["instance_id"] for row in chunk_rows],
-            )
+            if sqlite_conn is not None:
+                patches_by_iid = fetch_sqlite_patch_chunk(
+                    sqlite_conn,
+                    [row["instance_id"] for row in chunk_rows],
+                )
+            else:
+                assert conn is not None
+                patches_by_iid = fetch_remote_patch_chunk(conn, chunk_rows)
             print(
                 f"{split_name}: chunk {chunk_idx}/{n_chunks} fetched "
                 f"{len(patches_by_iid):,} patch rows in {time.time() - fetch_t0:.1f}s",
@@ -292,7 +285,10 @@ def _preprocess_rows(
                     flush=True,
                 )
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
+        if sqlite_conn is not None:
+            sqlite_conn.close()
         if tag_pool is not None:
             tag_pool.shutdown()
 
@@ -348,6 +344,7 @@ def main() -> None:
     ap.add_argument("--max-tokens", type=int, default=384)
     ap.add_argument("--max-patch-chars", type=int, default=0, help="0 keeps full patch text")
     ap.add_argument("--hash-vocab-size", type=int, default=32768)
+    ap.add_argument("--patch-sqlite", default="")
     ap.add_argument("--preprocess-workers", type=int, default=1)
     ap.add_argument("--tag-batch-size", type=int, default=64)
     ap.add_argument("--fetch-chunk-size", type=int, default=1024)
@@ -415,6 +412,7 @@ def main() -> None:
     processed = _preprocess_rows(
         rows=shard_rows,
         cfg_path=args.pg_config,
+        patch_sqlite=args.patch_sqlite,
         tokenizer=tokenizer,
         max_tokens=args.max_tokens,
         hash_vocab_size=args.hash_vocab_size,
@@ -460,6 +458,7 @@ def main() -> None:
             "max_tokens": args.max_tokens,
             "max_patch_chars": args.max_patch_chars,
             "hash_vocab_size": args.hash_vocab_size,
+            "patch_sqlite": args.patch_sqlite,
             "preprocess_workers": args.preprocess_workers,
             "tag_batch_size": args.tag_batch_size,
             "fetch_chunk_size": args.fetch_chunk_size,

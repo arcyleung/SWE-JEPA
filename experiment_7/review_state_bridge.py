@@ -13,6 +13,7 @@ targeted review feedback used by the v3 steered agent.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -30,6 +31,22 @@ EXCEPT_PASS_PAT = re.compile(r"except[^\n]*:\s*\n\s*pass")
 HTTP_CALL_PAT = re.compile(r"requests\.(get|post|put|delete|patch)\(|httpx\.|aiohttp\.")
 TIMEOUT_PAT = re.compile(r"timeout\s*=")
 SHARED_DIRS = {"utils", "common", "lib", "shared", "helpers", "core", "base", "compat"}
+DEF_OR_CLASS_PAT = re.compile(r"^[+-]\s*(?:async\s+def|def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+HUNK_CONTEXT_PAT = re.compile(r"@@.*?@@\s*(?:async\s+def|def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+ASYNC_RUNTIME_PAT = re.compile(
+    r"\b(?:asyncio|await|IOLoop|run_until_complete|get_event_loop|new_event_loop|pytest\.mark\.asyncio)\b"
+)
+SCHEMA_RISK_PAT = re.compile(
+    r"\b(?:kwargs|VAR_KEYWORD|inspect\.Parameter\.empty|Signature|schema|properties|serializer|field_info)\b"
+)
+TYPE_HINT_RISK_PAT = re.compile(
+    r"\b(?:Annotated|Literal|Union|Optional|ForwardRef|get_type_hints|typing\.|__future__\s+import\s+annotations)\b"
+)
+SENTINEL_COMPARE_PAT = re.compile(
+    r"(?:==|!=)\s*(?:None|inspect\.Parameter\.empty)\b|"
+    r"\b(?:is|is\s+not)\s*(?:True|False)\b"
+)
+PRIVATE_ATTR_PAT = re.compile(r"\._[A-Za-z][A-Za-z0-9_]*")
 
 TAG_MESSAGES: dict[str, str] = {
     "patch_too_large": (
@@ -66,9 +83,96 @@ TAG_MESSAGES: dict[str, str] = {
         "Network calls appear to be added without explicit timeouts. Add timeouts "
         "to prevent hangs in production."
     ),
+    "contract_without_targeted_tests": (
+        "Public interface or shared behavior changed without clearly targeted regression "
+        "coverage. Keep the contract stable and add tests for the exact changed path "
+        "and edge cases."
+    ),
+    "schema_contract_mismatch": (
+        "This patch may be changing the runtime/schema contract. Make sure kwargs, "
+        "parameter metadata, and serialized fields stay consistent with the public API."
+    ),
+    "sentinel_identity_risk": (
+        "Sentinel or identity handling looks risky. Prefer identity checks for sentinels "
+        "and verify default or empty-value behavior with focused tests."
+    ),
+    "private_attr_test_reliance": (
+        "New tests appear to rely on private attributes. Prefer assertions through the "
+        "public API or externally visible behavior."
+    ),
+    "async_boundary_change": (
+        "The patch changes async or event-loop boundaries. Keep sync/async contracts "
+        "stable and add coverage for callsites, return types, and runtime lifecycle."
+    ),
+    "type_annotation_contract_change": (
+        "Type or annotation handling changed on a public/shared path. Preserve existing "
+        "helper flow and add a regression test for the exact annotation shape being fixed."
+    ),
+    "overbroad_fix_scope": (
+        "The fix may be broader than necessary. Keep the change local and avoid "
+        "duplicating or rewriting surrounding helper logic unless the task requires it."
+    ),
 }
 
 TAG_NAMES = list(TAG_MESSAGES.keys())
+
+
+@dataclass(frozen=True)
+class PatchFileSection:
+    path: str
+    added_lines: tuple[str, ...]
+    removed_lines: tuple[str, ...]
+    context_symbols: tuple[str, ...]
+
+
+def split_patch_sections(patch_text: str) -> list[PatchFileSection]:
+    """Split a unified diff into per-file added/removed line groups."""
+    sections: list[PatchFileSection] = []
+    current_path: str | None = None
+    added_lines: list[str] = []
+    removed_lines: list[str] = []
+    context_symbols: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_path, added_lines, removed_lines, context_symbols
+        if current_path is None:
+            return
+        sections.append(
+            PatchFileSection(
+                path=current_path,
+                added_lines=tuple(added_lines),
+                removed_lines=tuple(removed_lines),
+                context_symbols=tuple(context_symbols),
+            )
+        )
+        current_path = None
+        added_lines = []
+        removed_lines = []
+        context_symbols = []
+
+    for line in patch_text.splitlines():
+        if line.startswith("diff --git"):
+            flush()
+            m = re.match(r"diff --git a/(.*?) b/(.*)", line)
+            if m:
+                current_path = m.group(2)
+            continue
+        if current_path is None:
+            continue
+        if line.startswith("@@"):
+            for symbol in HUNK_CONTEXT_PAT.findall(line):
+                if not symbol.startswith("_"):
+                    context_symbols.append(symbol)
+            continue
+        if line.startswith("+++ ") or line.startswith("--- "):
+            continue
+        if line.startswith("+"):
+            added_lines.append(line[1:])
+        elif line.startswith("-"):
+            removed_lines.append(line[1:])
+
+    flush()
+    return sections
 
 
 def _has_sql_fstring(patch_text: str) -> bool:
@@ -125,10 +229,80 @@ def classify_files(files: list[str]) -> dict[str, list[str]]:
     return result
 
 
+def _extract_public_symbol_changes(sections: list[PatchFileSection]) -> set[str]:
+    symbols: set[str] = set()
+    for section in sections:
+        if TEST_PAT.search(section.path):
+            continue
+        symbols.update(symbol for symbol in section.context_symbols if not symbol.startswith("_"))
+        for line in (*section.added_lines, *section.removed_lines):
+            match = DEF_OR_CLASS_PAT.match(line)
+            if not match:
+                continue
+            symbol = match.group(1)
+            if symbol.startswith("_"):
+                continue
+            symbols.add(symbol)
+    return symbols
+
+
+def _collect_added_test_text(sections: list[PatchFileSection]) -> str:
+    test_lines: list[str] = []
+    for section in sections:
+        if TEST_PAT.search(section.path):
+            test_lines.extend(section.added_lines)
+    return "\n".join(test_lines)
+
+
+def _has_targeted_test_mentions(test_text: str, changed_symbols: set[str]) -> bool:
+    if not test_text or not changed_symbols:
+        return False
+    for symbol in changed_symbols:
+        if re.search(rf"\b{re.escape(symbol)}\b", test_text):
+            return True
+    return False
+
+
+def detect_runtime_review_messages(
+    patch_text: str,
+    max_issues: int = 4,
+) -> list[str]:
+    """Extract runtime-only review hints from the concrete diff.
+
+    These heuristics expand the current 7.1 bridge without changing the
+    checkpoint tag schema. The student still predicts the original 9 tags,
+    while this layer adds concrete contract/test hints that frontier judges
+    repeatedly called out in failed comparisons.
+    """
+    issue_flags = detect_review_issue_flags(patch_text)
+    runtime_tag_scores = {
+        tag_name: float(issue_flags.get(tag_name, 0))
+        for tag_name in TAG_NAMES
+    }
+    return render_review_messages(
+        tag_scores=runtime_tag_scores,
+        cluster_id=None,
+        cluster_hints=None,
+        threshold=0.5,
+        max_issues=max_issues,
+    )
+
+
 def detect_review_issue_flags(patch_text: str) -> dict[str, int]:
     """Return deterministic binary issue tags for a patch diff."""
     stats = count_patch_stats(patch_text)
     classified = classify_files(stats["files"])
+    sections = split_patch_sections(patch_text)
+    changed_symbols = _extract_public_symbol_changes(sections)
+    added_test_text = _collect_added_test_text(sections)
+    added_non_test_text = "\n".join(
+        line
+        for section in sections
+        if not TEST_PAT.search(section.path)
+        for line in section.added_lines
+    )
+    touches_contract_surface = bool(changed_symbols or classified["shared"] or classified["api"])
+    has_targeted_test_mentions = _has_targeted_test_mentions(added_test_text, changed_symbols)
 
     flags = {name: 0 for name in TAG_NAMES}
     flags["patch_too_large"] = int(stats["n_files"] > 8)
@@ -142,6 +316,27 @@ def detect_review_issue_flags(patch_text: str) -> dict[str, int]:
     has_http = bool(HTTP_CALL_PAT.search(patch_text))
     has_timeout = bool(TIMEOUT_PAT.search(patch_text))
     flags["http_without_timeout"] = int(has_http and not has_timeout)
+    flags["contract_without_targeted_tests"] = int(
+        touches_contract_surface and not has_targeted_test_mentions
+    )
+    flags["schema_contract_mismatch"] = int(
+        bool(SCHEMA_RISK_PAT.search(added_non_test_text))
+        and (
+            touches_contract_surface
+            or "kwargs" in added_non_test_text
+            or "schema" in added_non_test_text
+            or "validate(" in added_non_test_text
+        )
+    )
+    flags["sentinel_identity_risk"] = int(bool(SENTINEL_COMPARE_PAT.search(added_non_test_text)))
+    flags["private_attr_test_reliance"] = int(bool(PRIVATE_ATTR_PAT.search(added_test_text)))
+    flags["async_boundary_change"] = int(bool(ASYNC_RUNTIME_PAT.search(added_non_test_text)))
+    flags["type_annotation_contract_change"] = int(
+        touches_contract_surface and bool(TYPE_HINT_RISK_PAT.search(added_non_test_text))
+    )
+    flags["overbroad_fix_scope"] = int(
+        stats["n_files"] > 4 or stats["additions"] > 120 or len(changed_symbols) > 2
+    )
     return flags
 
 
@@ -194,6 +389,7 @@ def render_review_messages(
 def render_student_review_messages(
     tag_scores: dict[str, float],
     accept_prob: float,
+    patch_text: str | None = None,
     cluster_id: int | None = None,
     cluster_hints: dict[str, Any] | None = None,
     threshold: float = 0.5,
@@ -208,6 +404,10 @@ def render_student_review_messages(
     primary threshold, lower the tag threshold. As a last resort, use the
     single highest-scoring tag so the review prompt stays concrete.
     """
+    heuristic_issues = detect_runtime_review_messages(
+        patch_text=patch_text or "",
+        max_issues=max_issues,
+    ) if patch_text else []
     issues = render_review_messages(
         tag_scores=tag_scores,
         cluster_id=cluster_id,
@@ -215,6 +415,18 @@ def render_student_review_messages(
         threshold=threshold,
         max_issues=max_issues,
     )
+    if heuristic_issues:
+        issues = heuristic_issues + issues
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for issue in issues:
+            if issue in seen:
+                continue
+            deduped.append(issue)
+            seen.add(issue)
+            if len(deduped) >= max_issues:
+                break
+        issues = deduped
     if issues or accept_prob > accept_threshold:
         return issues
 
@@ -225,8 +437,23 @@ def render_student_review_messages(
         threshold=fallback_threshold,
         max_issues=max_issues,
     )
+    if heuristic_issues:
+        issues = heuristic_issues + issues
+        deduped = []
+        seen = set()
+        for issue in issues:
+            if issue in seen:
+                continue
+            deduped.append(issue)
+            seen.add(issue)
+            if len(deduped) >= max_issues:
+                break
+        issues = deduped
     if issues:
         return issues
+
+    if heuristic_issues:
+        return heuristic_issues[:max_issues]
 
     if not tag_scores:
         return []
