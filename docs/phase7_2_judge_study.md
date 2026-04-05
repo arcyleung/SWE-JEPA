@@ -20,24 +20,16 @@ better predicts lower long-run maintenance cost?"
 
 ## Core Observation
 
-Current phase 7.1 scaffold judge snapshot:
-
-| Judge | Valid | JEPA-steered wins | Win rate |
-|---|---:|---:|---:|
-| `qwen3.5-397b-a17b` | 121 | 60 | 49.59% |
-| `qwen3-coder-480b-a35b-instruct` | 121 | 57 | 47.11% |
-| `gpt-5.3-codex` | 121 | 66 | 54.55% |
-| `gpt-5.4` | 121 | 64 | 52.89% |
-| `claude-opus-4-6` | 101 | 53 | 52.48% |
-| `MiniMax-M2.7` | 121 | 69 | 57.02% |
-| `kimi-k2.5` | 121 | 67 | 55.37% |
-
-The headline pattern is:
+An initial phase 7.1 scaffold panel slice exposed a stable preference split:
 
 - Qwen judges are below parity on JEPA-steered patches.
 - Codex / GPT / Claude / MiniMax / Kimi are above parity.
 - This is not a small-noise effect. The split is systematic in the
   justifications and in the dimension scores.
+
+The exact percentages from that first panel pass are intentionally omitted
+here. Later cleanup reruns changed the absolute valid-count denominators, but
+they did not change the qualitative pattern that motivated this study.
 
 ## Direct Disagreement Evidence
 

@@ -2,15 +2,15 @@
 
 ## Goal
 
-Re-run the full in-scaffold FeatBench evaluation for the phase 7.1 `h`-full
-student steerer after improving the host-side review bridge.
+Re-run the full in-scaffold FeatBench evaluation for the `h`-full JEPA steerer
+after expanding the review ontology beyond the original 9-tag bridge.
 
-This experiment keeps the same trained 7.1 checkpoint and coding model, but
-expands the symbolic bridge so the steerer can emit more concrete review
-guidance from the actual patch diff instead of relying as heavily on:
+This note records two closely related steps:
 
-- the original 9 learned tags
-- generic HDBSCAN cluster-risk messages
+1. the initial bridge-only ablation, which added richer host-side review
+   heuristics on top of the old 7.1 checkpoint
+2. the final reported run, which retrained the student on the richer tag set
+   and then reran FeatBench with that retrained checkpoint
 
 The main question is whether better bridge specificity improves:
 
@@ -65,7 +65,7 @@ cd /shared_workspace_mfs/arthur/coder
 
 ## Bridge Changes
 
-The updated bridge lives in:
+The bridge work started as a host-side expansion in:
 
 - `experiment_7/review_state_bridge.py`
 - `eval/FeatBench/docker_agent/agents/review_state_runtime.py`
@@ -85,79 +85,110 @@ These heuristics do **not** change the checkpoint schema. The student still
 predicts the original 9 tags; the bridge now supplements them with diff-side
 contract/test diagnostics.
 
-## Eval Setup
+That bridge-only variant was useful for error analysis, but it was not the
+final reported configuration. The final phase 7.3 result below uses the
+retrained richer-tag student from phase 7.2 instead of relying on runtime-only
+heuristics layered on top of the old 9-tag checkpoint.
 
-Run date: `2026-04-02`
+## Retrained Student
 
-Coding agent:
+The final reported phase 7.3 run uses the retrained richer-tag student from
+phase 7.2, not the earlier runtime-only heuristic bridge ablation.
 
-- agent: `qwen35-steered-phase7_1-h-full`
-- model: `hosted_vllm/qwen3.5_35b_a3b`
-- endpoint: `http://10.10.110.65:24000/v1`
+Checkpoint:
 
-Concurrency:
+- `/shared_workspace_mfs/arthur/coder/data/phase7_2/review_state_student_h_full_richer_tags.pt`
 
-- `64` workers
+Test metrics:
 
-Run outputs:
+- latent cosine: `0.3964`
+- cluster accuracy: `0.3767`
+- acceptance AUROC: `0.8502`
+- acceptance PR AUC: `0.9005`
+- tag macro F1: `0.1806`
+
+The richer learned tag set contains `16` tags. This improved tag supervision
+materially raised tag quality over the original 9-tag phase 7.1 student, while
+keeping the acceptance head roughly flat.
+
+## Final Reported Eval
+
+The first `64`-worker richer-tag attempts were not stable enough to treat as
+the final result. The reported phase 7.3 numbers come from the stable rerun
+after the 20-instance overlap spot check:
 
 - eval dir:
-  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-02_phase7_3_h_improved_bridge_qwen35`
+  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-04_phase7_3_h_improved_bridge_richer_tags_qwen35_full32_after_spotcheck`
 - results:
-  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-02_phase7_3_h_improved_bridge_qwen35/evaluation_results_steered_phase7_3_h_improved_bridge_qwen35.json`
+  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-04_phase7_3_h_improved_bridge_richer_tags_qwen35_full32_after_spotcheck/evaluation_results_steered_phase7_3_h_improved_bridge_richer_tags_qwen35.json`
 - log:
-  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-02_phase7_3_h_improved_bridge_qwen35/parallel_eval_qwen35_phase73.log`
-- swap root:
-  `/tmp/20260402_qwen35_eval_phase73_full156_swap`
+  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-04_phase7_3_h_improved_bridge_richer_tags_qwen35_full32_after_spotcheck/parallel_eval_qwen35_phase73_richer_tags.log`
 
-## Status
+Setup:
 
-The full 156-instance in-scaffold rerun has been launched and is currently in
-progress.
+- agent: `qwen35-steered-phase7_1-h-full`
+- coding model: `hosted_vllm/qwen3.5_35b_a3b`
+- endpoint: `http://10.10.110.70:24000/v1`
+- workers: `32`
 
-At the time this note was created:
+Final coding outcomes on `156` FeatBench instances:
 
-- the controller process was alive
-- the eval directory existed
-- the run had reached full `64`-worker container occupancy
-- the active wave was still in package install / setup inside the worker containers
-- no completed result rows had been written yet
+- `F2P`: `64 / 156`
+- `P2P`: `17 / 156`
+- `Both`: `7 / 156`
+- `None`: `4 / 156`
+- non-empty patches: `127 / 156`
 
-## Planned Comparison
+## Final Comparison
 
-When the run finishes, compare against the previous 7.1 qwen35 steered run and
-the merged baseline:
+Against the fully rerun references:
 
-- prior 7.1 steered:
-  `eval/FeatBench/docker_agent/eval_runs/2026-03-31_phase7_1_h_full_qwen35/`
-- merged baseline:
-  `eval/FeatBench/docker_agent/eval_runs/2026-03-31_qwen35_baseline_rerun_infra/`
+| Run | F2P | P2P | Both |
+|---|---:|---:|---:|
+| Baseline | `74 / 156` | `15 / 156` | `6 / 156` |
+| HDBSCAN 6.2 steerer | `72 / 156` | `15 / 156` | `8 / 156` |
+| JEPA-steerer v1 | `79 / 156` | `14 / 156` | `7 / 156` |
+| Phase 7.3 richer-tags | `64 / 156` | `17 / 156` | `7 / 156` |
 
-Primary metrics:
+Interpretation:
 
-- `success_f2p`
-- `success_p2p`
-- `success` (both)
+- phase 7.3 improved `P2P` the most
+- phase 7.3 did not recover `F2P` to baseline or JEPA v1
+- `Both` tied JEPA v1, exceeded baseline, and stayed below HDBSCAN v3
 
-Secondary follow-up:
+## Scaffold Judge Panel
 
-- rerun the in-scaffold judge panel on the improved-bridge outputs
-- compare judge win rate against:
-  - phase 7.1 scaffold: `52.26%`
-  - phase 7.1 patch-only: `55.07%`
+Final scaffold judging was recomputed after the Claude API recovered and the
+old Claude `no_verdict` rows were retried in place.
 
-## Initial Expectation
+HDBSCAN 6.2 scaffold panel:
 
-The improved bridge should help most on cases where frontier judges previously
-preferred the baseline because the old bridge missed concrete defect classes
-such as:
+- summary:
+  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-03-25_phase6_2/judge_panel_v3_scaffold_clean/summary.json`
+- panel: `605 / 1083 = 55.86%`
+- Claude after cleanup: `65 / 120 = 54.17%`, `0` errors
 
-- schema / kwargs contract drift
-- wrong sentinel handling
-- missing targeted regression tests
-- async boundary risk
-- unnecessary helper rewrites
+Retrained JEPA scaffold panel:
 
-So the expected benefit is not “stronger generic steering,” but “more specific
-second-pass review prompts that better match what the stronger judges actually
-criticized.”
+- summary:
+  `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-04_phase7_3_h_improved_bridge_richer_tags_qwen35_judge_scaffold/summary.json`
+- panel: `605 / 1016 = 59.55%`
+- Claude after cleanup: `66 / 115 = 57.39%`, `0` errors
+
+These panel totals are over valid judgments only. Some non-Claude judges still
+have residual errors, so the denominator differs across panels.
+
+## Conclusion
+
+Phase 7.3 did not beat the best coding-task `F2P` reference, but it did
+improve `P2P` and materially improved scaffold judge preference relative to the
+fully rerun HDBSCAN 6.2 panel:
+
+- coding tasks: stronger preservation / review quality signal, weaker direct
+  target-fix rate than baseline and JEPA v1
+- scaffold judging: `59.55%` for retrained richer-tags vs `55.86%` for rerun
+  HDBSCAN v3
+
+So the richer learned ontology looks directionally useful for the review-state
+bridge, but the current coding model still converts that extra signal into
+better `P2P` more reliably than better `F2P`.
