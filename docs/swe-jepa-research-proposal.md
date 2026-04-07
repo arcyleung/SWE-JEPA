@@ -974,6 +974,7 @@ proceed in parallel.
 
 ## Key References
 
+- **SlopCodeBench**: Orlanski et al., "Benchmarking How Coding Agents Degrade Over Long-Horizon Iterative Tasks" (arxiv:2603.24755, 2026)
 - **AIDev**: Li et al., "The Rise of AI Teammates in Software Engineering (SE) 3.0: How Autonomous Coding Agents Are Reshaping Software Engineering"
 - https://arxiv.org/pdf/2603.12229
 - **ThinkLogit**: Zhang et al., "Logit Arithmetic Elicits Long Reasoning Capabilities Without Training" (arxiv:2510.09354, 2025)
