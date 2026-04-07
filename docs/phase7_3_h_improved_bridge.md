@@ -139,22 +139,53 @@ Final coding outcomes on `156` FeatBench instances:
 - `None`: `4 / 156`
 - non-empty patches: `127 / 156`
 
-## Final Comparison
+## Final Evaluation
 
-Against the fully rerun references:
+Against the fully rerun references, the fair coding-task comparison is:
 
 | Run | F2P | P2P | Both |
 |---|---:|---:|---:|
 | Baseline | `74 / 156` | `15 / 156` | `6 / 156` |
 | HDBSCAN 6.2 steerer | `72 / 156` | `15 / 156` | `8 / 156` |
 | JEPA-steerer v1 | `79 / 156` | `14 / 156` | `7 / 156` |
-| Phase 7.3 richer-tags | `64 / 156` | `17 / 156` | `7 / 156` |
+| JEPA retrained richer-tags | `64 / 156` | `17 / 156` | `7 / 156` |
+
+The phase 7.3 rerun-jitter probe also matters. On the `21` instances where
+JEPA v1 had `F2P=True` but the richer-tags run did not, a direct FeatBench
+rerun recovered `12 / 21` `F2P` passes and `2 / 21` full successes. If those
+rerun results are merged back into the phase 7.3 coding totals, the adjusted
+phase 7.3 line becomes:
+
+- `F2P`: `76 / 156`
+- `P2P`: `17 / 156`
+- `Both`: `9 / 156`
+
+So the stable reported phase 7.3 run underestimates the richer-tag steerer on
+some overlap cases; there is a substantial benchmark/model jitter component.
+
+The fair scaffold-judge comparison should be reported on valid paired judgments
+only, with each run using its own actual pairable denominator:
+
+| Run | Scaffold Win Rate |
+|---|---:|
+| Baseline | not run in this panel setup |
+| HDBSCAN 6.2 steerer | `605 / 1083 = 55.86%` |
+| JEPA-steerer v1 | not rerun as a full final 9-judge panel here |
+| JEPA retrained richer-tags | `612 / 1033 = 59.24%` |
+
+For the phase 7.3 jitter subset alone, replacing the overlapping judged rows
+from the full retrained JEPA panel improved the like-for-like steered wins from
+`612 / 1033` to `617 / 1033 = 59.73%`. That is the fair paired-instance effect
+of the rerun on rows that were already comparable in the original panel.
 
 Interpretation:
 
-- phase 7.3 improved `P2P` the most
-- phase 7.3 did not recover `F2P` to baseline or JEPA v1
-- `Both` tied JEPA v1, exceeded baseline, and stayed below HDBSCAN v3
+- on the raw stable full run, phase 7.3 improved `P2P` but lagged JEPA v1 on
+  `F2P`
+- the targeted rerun shows that a large fraction of the apparent `F2P`
+  regressions relative to JEPA v1 are jitter, not persistent failures
+- after judge cleanup, retrained JEPA remains clearly above the fully rerun
+  HDBSCAN v3 scaffold panel on fair valid-judgment win rate
 
 ## Scaffold Judge Panel
 
@@ -172,7 +203,7 @@ Retrained JEPA scaffold panel:
 
 - summary:
   `/shared_workspace_mfs/arthur/coder/eval/FeatBench/docker_agent/eval_runs/2026-04-04_phase7_3_h_improved_bridge_richer_tags_qwen35_judge_scaffold/summary.json`
-- panel: `605 / 1016 = 59.55%`
+- panel: `612 / 1033 = 59.24%`
 - Claude after cleanup: `66 / 115 = 57.39%`, `0` errors
 
 These panel totals are over valid judgments only. Some non-Claude judges still
